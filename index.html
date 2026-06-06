@@ -202,6 +202,33 @@
 <body>
   <div id="app"></div>
 
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBNoxK5we1GymQyEqv2l9rBXh_mg77V-qI",
+      authDomain: "filmonskeportal.firebaseapp.com",
+      databaseURL: "https://filmonskeportal-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "filmonskeportal",
+      storageBucket: "filmonskeportal.firebasestorage.app",
+      messagingSenderId: "151608748582",
+      appId: "1:151608748582:web:af434abef55190b959d4e7"
+    };
+
+    try {
+      const app = initializeApp(firebaseConfig);
+      window.firebaseApp = app;
+      window.firebaseConfig = firebaseConfig;
+      window.firebaseConnected = true;
+      window.firebaseStatusText = 'Firebase tilkoblet';
+      console.log('Firebase initialisert', app);
+    } catch (err) {
+      window.firebaseApp = null;
+      window.firebaseConnected = false;
+      window.firebaseStatusText = 'Firebase-feil: ' + (err?.message || err);
+      console.error('Firebase init-feil', err);
+    }
+  </script>
   <script>
     const STORAGE = {
       users: 'filmportal_users_v1',
@@ -264,13 +291,14 @@
     };
 
     function getFirebaseStatus() {
-      const host = (location.hostname || '').toLowerCase();
-      const hostedOnFirebase = host.endsWith('.web.app') || host.endsWith('.firebaseapp.com');
-      if (hostedOnFirebase) {
-        return { text: 'Firebase Hosting aktiv', dotClass: '' };
+      if (window.firebaseConnected === true) {
+        return { text: window.firebaseStatusText || 'Firebase tilkoblet', dotClass: '' };
       }
-      if (host === 'localhost' || host === '127.0.0.1') {
-        return { text: 'Lokal visning (ikke publisert i Firebase)', dotClass: 'warn' };
+      if (window.firebaseStatusText && String(window.firebaseStatusText).startsWith('Firebase-feil:')) {
+        return { text: window.firebaseStatusText, dotClass: 'off' };
+      }
+      if (window.firebaseConfig) {
+        return { text: 'Firebase konfigurert', dotClass: 'warn' };
       }
       return { text: 'Firebase ikke koblet til', dotClass: 'off' };
     }
@@ -649,7 +677,6 @@
             <div class="grid">
               <div class="col-6 card">
                 <h2>Innstillinger</h2>
-                <div class="notice info" style="margin-top:10px;">Status akkurat nå: <strong>${firebaseStatus.text}</strong></div>
                 <form id="settingsForm">
                   <div>
                     <label for="omdbApiKey">OMDb API-nøkkel</label>
