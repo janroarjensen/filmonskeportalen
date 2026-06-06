@@ -56,6 +56,8 @@
       color:#e2e8f0; padding:8px 12px; border-radius:999px; font-size:.92rem;
     }
     .dot { width:8px; height:8px; border-radius:50%; background: var(--ok); display:inline-block; }
+    .dot.warn { background: var(--warn); }
+    .dot.off { background: #64748b; }
     .grid {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
@@ -261,6 +263,18 @@
       try { return new Date(iso).toLocaleString('no-NO'); } catch { return iso; }
     };
 
+    function getFirebaseStatus() {
+      const host = (location.hostname || '').toLowerCase();
+      const hostedOnFirebase = host.endsWith('.web.app') || host.endsWith('.firebaseapp.com');
+      if (hostedOnFirebase) {
+        return { text: 'Firebase Hosting aktiv', dotClass: '' };
+      }
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return { text: 'Lokal visning (ikke publisert i Firebase)', dotClass: 'warn' };
+      }
+      return { text: 'Firebase ikke koblet til', dotClass: 'off' };
+    }
+
     let state = {
       view: 'dashboard',
       filterText: '',
@@ -409,6 +423,7 @@
               </div>
               <button type="submit">Logg inn</button>
             </form>
+            <div class="footer-note"><span class="badge"><span class="dot ${getFirebaseStatus().dotClass}"></span>${getFirebaseStatus().text}</span></div>
             <div id="loginMsg" class="footer-note">Tips: Legg inn OMDb API-nøkkel etter innlogging for automatisk sjekk mot IMDb-data.</div>
           </div>
         </div>
@@ -432,6 +447,7 @@
       const users = getUsers();
       const requests = getRequests();
       const settings = getSettings();
+      const firebaseStatus = getFirebaseStatus();
       const newCount = requests.filter(r => !r.adminSeen).length;
       const downloadedCount = requests.filter(r => r.downloaded).length;
       const wantedCount = requests.filter(r => !r.downloaded).length;
@@ -458,6 +474,7 @@
             </nav>
             <div class="userbox">
               <span class="muted">${escapeHtml(session.displayName || session.username)} (${session.role === 'admin' ? 'Admin' : 'Bruker'})</span>
+              <span class="badge"><span class="dot ${firebaseStatus.dotClass}"></span>${firebaseStatus.text}</span>
               <button class="btn-secondary" style="width:auto;" onclick="logout()">Logg ut</button>
             </div>
           </div>
@@ -632,6 +649,7 @@
             <div class="grid">
               <div class="col-6 card">
                 <h2>Innstillinger</h2>
+                <div class="notice info" style="margin-top:10px;">Status akkurat nå: <strong>${firebaseStatus.text}</strong></div>
                 <form id="settingsForm">
                   <div>
                     <label for="omdbApiKey">OMDb API-nøkkel</label>
