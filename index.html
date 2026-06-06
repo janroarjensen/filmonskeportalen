@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Filmønskeportal 2026</title>
+  <title>Filmønskeportal</title>
   <style>
     :root{
       --bg:#0f172a;
@@ -32,7 +32,7 @@
     }
     a { color: var(--brand); }
     .container {
-      width: min(1200px, calc(100% - 24px));
+      width: min(1440px, calc(100% - 32px));
       margin: 20px auto 40px;
     }
     .hero {
@@ -186,11 +186,20 @@
     }
     .right { text-align:right; }
     .linklike { background: transparent; color:#93c5fd; padding: 0; border:none; width:auto; }
-    @media (max-width: 980px) {
+    .new-request-main { grid-column: span 8; }
+    .new-request-side { grid-column: span 4; }
+    .new-request-main .card, .new-request-side .card { height: 100%; }
+    .new-request-main textarea { min-height: 160px; }
+    .new-request-main input, .new-request-main select, .new-request-main textarea { padding: 14px 16px; }
+    .new-request-main button { padding: 14px 18px; }
+    @media (max-width: 860px) {
+      .new-request-main, .new-request-side { grid-column: span 12; }
+    }
+    @media (max-width: 860px) {
       .col-8, .col-6, .col-4, .col-3 { grid-column: span 12; }
       .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
     }
-    @media (max-width: 700px) {
+    @media (max-width: 620px) {
       .item { grid-template-columns: 1fr; }
       .poster { width: 100%; height: 220px; }
       .field.half, .field.third, .field.two-thirds { grid-column: span 12; }
