@@ -32,7 +32,7 @@
     }
     a { color: var(--brand); }
     .container {
-      width: min(1200px, calc(100% - 24px));
+      width: min(1380px, calc(100% - 28px));
       margin: 20px auto 40px;
     }
     .hero {
@@ -461,14 +461,6 @@
       }
       await window.firebaseDb.ref(`requests/${id}`).update(patch);
     }
-    async function deleteRequest(id) {
-      if (!window.firebaseDb) {
-        const requests = (await getRequests()).filter(r => r.id !== id);
-        await saveRequests(requests);
-        return;
-      }
-      await window.firebaseDb.ref(`requests/${id}`).remove();
-    }
 
     function deleteUser(id) {
       const session = getSession();
@@ -534,7 +526,6 @@
                 <div class="btn-row">
                   <button class="${r.downloaded ? 'btn-secondary' : 'btn-ok'}" onclick="toggleDownloaded('${r.id}')">${r.downloaded ? 'Angre lastet ned' : 'Marker som lastet ned'}</button>
                   ${!r.adminSeen ? `<button class="btn-ghost" onclick="markSeen('${r.id}')">Marker som lest</button>` : ''}
-                  <button class="btn-danger" onclick="removeRequest('${r.id}', '${escapeHtml(r.title)}')">Slett</button>
                 </div>
               ` : ''}
             </div>
@@ -681,7 +672,7 @@
 
           <div ${state.view !== 'newRequest' ? 'class="hidden"' : ''}>
             <div class="grid">
-              <div class="col-7 card">
+              <div class="col-8 card">
                 <h2>Nytt ønske</h2>
                 <form id="requestForm">
                   <div class="row">
@@ -722,7 +713,7 @@
                 </form>
                 <div id="requestMsg" class="footer-note"></div>
               </div>
-              <div class="col-5 card">
+              <div class="col-4 card">
                 <h2>Tips</h2>
                 <div class="notice warn">
                   IMDb-sjekken bruker <strong>OMDb API</strong> i denne versjonen. Legg inn API-nøkkel under <strong>Innstillinger</strong> for automatisk treff på tittel, år og IMDb-ID.
@@ -894,20 +885,6 @@
     };
     window.markSeen = async (id) => { await updateRequest(id, { adminSeen: true }); await render(); };
     window.markAllSeen = async () => { await markAdminSeenAll(); await render(); };
-    window.removeRequest = async (id, title) => {
-      const session = getSession();
-      if (!session || session.role !== 'admin') {
-        alert('Kun admin kan slette filmer og serier.');
-        return;
-      }
-      if (!confirm(`Er du sikker på at du vil slette "${title}"?`)) return;
-      try {
-        await deleteRequest(id);
-        await render();
-      } catch (err) {
-        alert('Kunne ikke slette ønske: ' + (err?.message || err));
-      }
-    };
     window.removeUser = (id) => {
       if (!confirm('Slette bruker?')) return;
       try { deleteUser(id); render(); } catch (err) { alert(err.message); }
