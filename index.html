@@ -156,6 +156,10 @@
     .notice.info { background: rgba(37,99,235,.14); border-color: rgba(96,165,250,.24); }
     .notice.ok { background: rgba(22,163,74,.14); border-color: rgba(74,222,128,.22); }
     .notice.warn { background: rgba(245,158,11,.14); border-color: rgba(251,191,36,.2); }
+    .search-choice-list { display:grid; gap:10px; margin-top:12px; }
+    .search-choice { background: rgba(30,41,59,.75); border:1px solid rgba(148,163,184,.16); border-radius:14px; padding:12px; display:flex; justify-content:space-between; gap:12px; align-items:center; }
+    .search-choice .meta { margin: 0; }
+    .search-choice button { width:auto; padding:10px 14px; }
     nav.tabs {
       display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px;
     }
@@ -422,17 +426,30 @@
       users.push({ id: crypto.randomUUID(), username, password, displayName, role, createdAt: new Date().toISOString() });
       saveUsers(users);
     }
-
-    async function checkOmdb(title, type) {
+    async function searchOmdb(title, type) {
       const { omdbApiKey } = await getSettings();
       if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
-      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&t=${encodeURIComponent(title)}${type && type !== 'any' ? `&type=${encodeURIComponent(type)}` : ''}`;
+      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&s=${encodeURIComponent(title)}${type && type !== 'any' ? `&type=${encodeURIComponent(type)}` : ''}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.Response === 'False') throw new Error(data.Error || 'Fant ikke tittel.');
+      return data.Search || [];
+    }
+    async function getOmdbById(imdbID) {
+      const { omdbApiKey } = await getSettings();
+      if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
+      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&i=${encodeURIComponent(imdbID)}&plot=short`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.Response === 'False') throw new Error(data.Error || 'Fant ikke tittel.');
       return data;
     }
-
+    function fillOmdbFields(data) {
+      document.getElementById('title').value = data.Title || document.getElementById('title').value;
+      document.getElementById('year').value = data.Year || '';
+      document.getElementById('imdbID').value = data.imdbID || '';
+      document.getElementById('poster').value = data.Poster && data.Poster !== 'N/A' ? data.Poster : '';
+    }
     async function createRequest(payload) {
       const session = getSession();
       const request = {
@@ -722,6 +739,7 @@
                   <button type="submit">Lagre ønske</button>
                 </form>
                 <div id="requestMsg" class="footer-note"></div>
+                <div id="searchChoices" class="search-choice-list hidden"></div>
               </div>
               <div class="col-4 card">
                 <h2>Tips</h2>
@@ -913,6 +931,11 @@
       const title = document.getElementById('title')?.value.trim();
       const type = document.getElementById('type')?.value;
       const msg = document.getElementById('requestMsg');
+      const choices = document.getElementById('searchChoices');
+      if (choices) {
+        choices.innerHTML = '';
+        choices.classList.add('hidden');
+      }
       if (!title) {
         msg.textContent = 'Skriv inn en tittel først.';
         msg.style.color = '#fca5a5';
@@ -921,11 +944,47 @@
       msg.textContent = 'Søker ...';
       msg.style.color = '#93c5fd';
       try {
-        const data = await checkOmdb(title, type);
-        document.getElementById('year').value = data.Year || '';
-        document.getElementById('imdbID').value = data.imdbID || '';
-        document.getElementById('poster').value = data.Poster && data.Poster !== 'N/A' ? data.Poster : '';
-        msg.textContent = `Fant treff: ${data.Title} (${data.Year || 'ukjent år'})`;
+        const results = await searchOmdb(title, type);
+        if (results.length === 1) {
+          const data = await getOmdbById(results[0].imdbID);
+          fillOmdbFields(data);
+          msg.textContent = `Fant treff: ${data.Title} (${data.Year || 'ukjent år'})`;
+          msg.style.color = '#86efac';
+          return;
+        }
+        msg.textContent = `Fant flere treff på "${title}". Velg riktig film/serie under.`;
+        msg.style.color = '#fbbf24';
+        if (choices) {
+          choices.innerHTML = results.slice(0, 8).map(item => `
+            <div class="search-choice">
+              <div>
+                <div><strong>${escapeHtml(item.Title || '')}</strong></div>
+                <div class="small muted">${escapeHtml(item.Year || 'Ukjent år')} · ${item.Type === 'series' ? 'Serie' : 'Film'}</div>
+              </div>
+              <button type="button" class="btn-secondary" onclick="selectOmdbResult('${item.imdbID}')">Velg</button>
+            </div>
+          `).join('');
+          choices.classList.remove('hidden');
+        }
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.style.color = '#fca5a5';
+      }
+    };
+
+    window.selectOmdbResult = async (imdbID) => {
+      const msg = document.getElementById('requestMsg');
+      const choices = document.getElementById('searchChoices');
+      msg.textContent = 'Henter valgt tittel ...';
+      msg.style.color = '#93c5fd';
+      try {
+        const data = await getOmdbById(imdbID);
+        fillOmdbFields(data);
+        if (choices) {
+          choices.innerHTML = '';
+          choices.classList.add('hidden');
+        }
+        msg.textContent = `Valgt: ${data.Title} (${data.Year || 'ukjent år'})`;
         msg.style.color = '#86efac';
       } catch (err) {
         msg.textContent = err.message;
