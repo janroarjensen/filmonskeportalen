@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Filmønskeportal v2</title>
+  <title>Filmønskeportal</title>
   <style>
     :root{
       --bg:#0f172a;
@@ -204,7 +204,6 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyBNoxK5we1GymQyEqv2l9rBXh_mg77V-qI",
@@ -218,19 +217,14 @@
 
     window.firebaseApp = null;
     window.firebaseDb = null;
-    window.firebaseAuth = null;
     window.firebaseConnected = false;
     window.firebaseDbConnected = false;
-    window.firebaseAuthReady = false;
-    window.firebaseAnonActive = false;
-    window.firebaseAuthUser = null;
     window.firebaseStatusText = 'Firebase ikke koblet til';
     window.firebaseConfig = firebaseConfig;
 
     try {
       window.firebaseApp = firebase.initializeApp(firebaseConfig);
       window.firebaseDb = firebase.database();
-      window.firebaseAuth = firebase.auth();
       window.firebaseConnected = true;
       window.firebaseStatusText = 'Firebase tilkoblet · tester Realtime Database ...';
       firebase.database().ref('.info/connected').on('value', (snapshot) => {
@@ -243,17 +237,6 @@
       }, (error) => {
         window.firebaseDbConnected = false;
         window.firebaseStatusText = 'RTDB-feil: ' + (error?.message || error);
-        if (typeof window.render === 'function') window.render();
-      });
-
-      window.firebaseAuth.onAuthStateChanged((user) => {
-        window.firebaseAuthReady = true;
-        window.firebaseAuthUser = user || null;
-        window.firebaseAnonActive = !!(user && user.isAnonymous);
-        if (typeof window.render === 'function') window.render();
-      }, (error) => {
-        window.firebaseAuthReady = true;
-        console.error('Firebase auth-feil', error);
         if (typeof window.render === 'function') window.render();
       });
     } catch (err) {
@@ -380,35 +363,6 @@
     const getSession = () => JSON.parse(localStorage.getItem(STORAGE.session) || 'null');
     const saveSession = (session) => localStorage.setItem(STORAGE.session, JSON.stringify(session));
 
-    function getEffectiveSession() {
-      const localSession = getSession();
-      if (localSession) return localSession;
-      const user = window.firebaseAuthUser;
-      if (user && user.isAnonymous) {
-        return {
-          id: user.uid,
-          username: `gjest-${user.uid.slice(0, 6)}`,
-          role: 'user',
-          displayName: 'Gjest',
-          isAnonymous: true,
-          uid: user.uid
-        };
-      }
-      return null;
-    }
-
-    async function signInGuest() {
-      if (!window.firebaseAuth) throw new Error('Firebase Auth er ikke koblet til.');
-      if (window.firebaseAuth.currentUser?.isAnonymous) return;
-      await window.firebaseAuth.signInAnonymously();
-    }
-
-    async function signOutFirebaseUser() {
-      if (!window.firebaseAuth) return;
-      if (!window.firebaseAuth.currentUser) return;
-      await window.firebaseAuth.signOut();
-    }
-
     const escapeHtml = (s='') => String(s)
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
@@ -455,14 +409,9 @@
       return true;
     }
 
-    async function logout() {
+    function logout() {
       localStorage.removeItem(STORAGE.session);
-      try {
-        await signOutFirebaseUser();
-      } catch (err) {
-        console.error('Kunne ikke logge ut Firebase-bruker', err);
-      }
-      await render();
+      render();
     }
 
     function createUser({ username, password, displayName, role }) {
@@ -485,12 +434,10 @@
     }
 
     async function createRequest(payload) {
-      const session = getEffectiveSession();
-      if (!session) throw new Error('Ingen aktiv bruker. Logg inn først.');
+      const session = getSession();
       const request = {
         requestedBy: session.username,
         requestedByName: session.displayName || session.username,
-        requestedByUid: session.uid || session.id || '',
         requestedAt: new Date().toISOString(),
         status: 'new',
         downloaded: false,
@@ -525,7 +472,7 @@
     }
 
     function deleteUser(id) {
-      const session = getEffectiveSession();
+      const session = getSession();
       const users = getUsers();
       const user = users.find(u => u.id === id);
       if (!user) return;
@@ -599,50 +546,46 @@
         </div>
       `;
     }
+
     function renderLogin() {
       document.getElementById('app').innerHTML = `
         <div class="login-wrap">
           <div class="login-card">
             <h1 style="margin-top:0;">Filmønskeportal</h1>
-            <p class="muted">Anonym gjesteinnlogging for vanlige brukere. Admin kan fortsatt logge inn med brukernavn og passord.</p>
-            <div class="notice info">Gjestebrukere får en midlertidig anonym Firebase-bruker. Admin kan bruke <strong>admin / admin123</strong>.</div>
-            <div class="btn-row" style="margin-bottom:14px;">
-              <button type="button" class="btn-ok" onclick="guestLogin()">Fortsett som gjest</button>
-            </div>
+            <p class="muted">Mobilvennlig portal for film- og serieønsker.</p>
+            
             <form id="loginForm">
               <div>
-                <label for="loginUsername">Admin / brukernavn</label>
-                <input id="loginUsername" autocomplete="username" />
+                <label for="loginUsername">Brukernavn</label>
+                <input id="loginUsername" required autocomplete="username" />
               </div>
               <div>
                 <label for="loginPassword">Passord</label>
-                <input id="loginPassword" type="password" autocomplete="current-password" />
+                <input id="loginPassword" type="password" required autocomplete="current-password" />
               </div>
               <button type="submit">Logg inn</button>
             </form>
             <div class="footer-note"><span class="badge"><span class="dot ${getFirebaseStatus().dotClass}"></span>${getFirebaseStatus().text}</span></div>
-            <div id="loginMsg" class="footer-note">Tips: Bruk <strong>Fortsett som gjest</strong> for vanlige brukere.</div>
+            <div id="loginMsg" class="footer-note">Tips: Legg inn OMDb API-nøkkel etter innlogging for automatisk sjekk mot IMDb-data.</div>
           </div>
         </div>
       `;
       document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const username = document.getElementById('loginUsername').value.trim();
-        const password = document.getElementById('loginPassword').value;
-        const ok = await login(username, password);
+        const ok = await login(document.getElementById('loginUsername').value.trim(), document.getElementById('loginPassword').value);
         const msg = document.getElementById('loginMsg');
         if (!ok) {
           msg.textContent = 'Feil brukernavn eller passord.';
           msg.style.color = '#fca5a5';
           return;
         }
-        await render();
+        render();
       });
     }
 
     async function renderApp() {
       const session = getSession();
-      const isAdmin = session?.role === 'admin';
+      const isAdmin = session.role === 'admin';
       const users = getUsers();
       const requests = await getRequests();
       const settings = await getSettings();
@@ -660,7 +603,7 @@
               <h1>Filmønskeportal</h1>
               <p>Brukere kan legge inn film- og serieønsker. Admin kan opprette brukere, se hvem som har spurt og markere hva som er lastet ned.</p>
             </div>
-            <div class="badge"><span class="dot"></span>${isAdmin ? `Nye ønsker: ${newCount}` : `${session?.isAnonymous ? 'Innlogget som gjest' : `Innlogget som ${escapeHtml(session.displayName || session.username)}`}`}</div>
+            <div class="badge"><span class="dot"></span>${isAdmin ? `Nye ønsker: ${newCount}` : `Innlogget som ${escapeHtml(session.displayName || session.username)}`}</div>
           </div>
 
           <div class="topbar">
@@ -672,7 +615,7 @@
               <button class="${state.view === 'settings' ? 'active' : ''}" onclick="setView('settings')">Innstillinger</button>
             </nav>
             <div class="userbox">
-              <span class="muted">${escapeHtml(session.displayName || session.username)} (${session.role === 'admin' ? 'Admin' : (session.isAnonymous ? 'Gjest' : 'Bruker')})</span>
+              <span class="muted">${escapeHtml(session.displayName || session.username)} (${session.role === 'admin' ? 'Admin' : 'Bruker'})</span>
               <span class="badge"><span class="dot ${firebaseStatus.dotClass}"></span>${firebaseStatus.text}</span>
               <button class="btn-secondary" style="width:auto;" onclick="logout()">Logg ut</button>
             </div>
@@ -895,13 +838,7 @@
             note: document.getElementById('note').value.trim()
           };
           if (!payload.title) return;
-          try {
-            await createRequest(payload);
-          } catch (err) {
-            document.getElementById('requestMsg').textContent = err.message || 'Kunne ikke lagre ønsket.';
-            document.getElementById('requestMsg').style.color = '#fca5a5';
-            return;
-          }
+          await createRequest(payload);
           document.getElementById('requestMsg').textContent = 'Ønsket er lagret.';
           document.getElementById('requestMsg').style.color = '#86efac';
           requestForm.reset();
@@ -972,23 +909,6 @@
         alert(err.message || 'Kunne ikke slette ønsket.');
       }
     };
-
-    window.guestLogin = async () => {
-      const msg = document.getElementById('loginMsg');
-      if (msg) {
-        msg.textContent = 'Logger inn som gjest ...';
-        msg.style.color = '#93c5fd';
-      }
-      try {
-        await signInGuest();
-        await render();
-      } catch (err) {
-        if (msg) {
-          msg.textContent = err.message || 'Kunne ikke logge inn som gjest.';
-          msg.style.color = '#fca5a5';
-        }
-      }
-    };
     window.lookupTitle = async () => {
       const title = document.getElementById('title')?.value.trim();
       const type = document.getElementById('type')?.value;
@@ -1021,11 +941,7 @@
 
     async function render() {
       await seedIfEmpty();
-      if (window.firebaseAuth && !window.firebaseAuthReady) {
-        document.getElementById('app').innerHTML = '<div class="login-wrap"><div class="login-card"><h1 style="margin-top:0;">Filmønskeportal</h1><p class="muted">Kobler til Firebase Authentication ...</p></div></div>';
-        return;
-      }
-      const session = getEffectiveSession();
+      const session = getSession();
       if (!session) return renderLogin();
       return await renderApp();
     }
