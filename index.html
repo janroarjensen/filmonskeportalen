@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Filmønskeportal</title>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --panel-2:#1f2937;
+      --card:#ffffff;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --border:#334155;
+      --brand:#2563eb;
+      --brand-2:#1d4ed8;
+      --ok:#16a34a;
+      --warn:#f59e0b;
+      --danger:#dc2626;
+      --chip:#e2e8f0;
+      --shadow: 0 10px 30px rgba(0,0,0,.15);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    a { color: var(--brand); }
+    .container {
+      width: min(1200px, calc(100% - 24px));
+      margin: 20px auto 40px;
+    }
+    .hero {
+      background: linear-gradient(135deg, rgba(37,99,235,.2), rgba(29,78,216,.05));
+      border: 1px solid rgba(96,165,250,.2);
+      border-radius: 26px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .hero h1 { margin: 0 0 6px; font-size: clamp(1.4rem, 2vw, 2rem); }
+    .hero p { margin: 0; color: #cbd5e1; }
+    .badge {
+      display:inline-flex; align-items:center; gap:8px;
+      background: rgba(30,41,59,.8); border:1px solid rgba(148,163,184,.25);
+      color:#e2e8f0; padding:8px 12px; border-radius:999px; font-size:.92rem;
+    }
+    .dot { width:8px; height:8px; border-radius:50%; background: var(--ok); display:inline-block; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+    .card {
+      background: rgba(15,23,42,.78);
+      border: 1px solid rgba(148,163,184,.16);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+    .card h2, .card h3 { margin-top: 0; }
+    .col-12 { grid-column: span 12; }
+    .col-8 { grid-column: span 8; }
+    .col-6 { grid-column: span 6; }
+    .col-4 { grid-column: span 4; }
+    .col-3 { grid-column: span 3; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .stat {
+      background: rgba(30,41,59,.72);
+      border:1px solid rgba(148,163,184,.18);
+      border-radius: 18px;
+      padding: 14px;
+    }
+    .stat .label { color: var(--muted); font-size: .9rem; }
+    .stat .value { font-size: 1.6rem; font-weight: 700; margin-top: 8px; }
+    form { display:grid; gap:12px; }
+    .row { display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; }
+    .field { grid-column: span 12; }
+    .field.half { grid-column: span 6; }
+    .field.third { grid-column: span 4; }
+    .field.two-thirds { grid-column: span 8; }
+    label { display:block; margin-bottom:6px; font-weight:600; }
+    input, select, textarea, button {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(148,163,184,.2);
+      font: inherit;
+    }
+    input, select, textarea {
+      background:#0b1220; color:#f8fafc; padding:12px 14px;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    button {
+      cursor:pointer; border:none; padding:12px 16px; font-weight:700;
+      background: var(--brand); color:#fff; transition: .2s transform, .2s opacity, .2s background;
+    }
+    button:hover { opacity: .95; }
+    button:active { transform: translateY(1px); }
+    .btn-row { display:flex; gap:10px; flex-wrap:wrap; }
+    .btn-secondary { background: #334155; }
+    .btn-ghost { background: transparent; border:1px solid rgba(148,163,184,.25); }
+    .btn-ok { background: var(--ok); }
+    .btn-warn { background: var(--warn); color:#111827; }
+    .btn-danger { background: var(--danger); }
+    .toolbar {
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;
+      margin-bottom: 12px;
+    }
+    .toolbar .filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; flex:1; }
+    .toolbar .filters input, .toolbar .filters select { width:auto; min-width: 160px; }
+    .list {
+      display:grid; gap:12px;
+    }
+    .item {
+      display:grid; grid-template-columns: 92px 1fr; gap:14px;
+      background: rgba(30,41,59,.75);
+      border:1px solid rgba(148,163,184,.16);
+      border-radius: 18px; padding: 14px;
+    }
+    .poster {
+      width: 92px; height: 132px; object-fit: cover; border-radius: 14px;
+      background: linear-gradient(180deg, #334155, #1e293b);
+      border: 1px solid rgba(148,163,184,.15);
+    }
+    .meta { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 8px; }
+    .chip {
+      background: var(--chip); color:#0f172a; border-radius:999px; padding:5px 10px; font-size:.82rem; font-weight:700;
+    }
+    .chip.dark { background:#334155; color:#e2e8f0; }
+    .chip.new { background:#fef3c7; color:#92400e; }
+    .chip.done { background:#dcfce7; color:#166534; }
+    .muted { color: var(--muted); }
+    .small { font-size: .9rem; }
+    .hidden { display:none !important; }
+    .notice {
+      padding: 12px 14px; border-radius: 14px; margin-bottom: 12px; font-size:.95rem;
+      border:1px solid transparent;
+    }
+    .notice.info { background: rgba(37,99,235,.14); border-color: rgba(96,165,250,.24); }
+    .notice.ok { background: rgba(22,163,74,.14); border-color: rgba(74,222,128,.22); }
+    .notice.warn { background: rgba(245,158,11,.14); border-color: rgba(251,191,36,.2); }
+    nav.tabs {
+      display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px;
+    }
+    nav.tabs button {
+      width:auto; padding:10px 14px; border-radius: 999px; background:#0b1220;
+      border:1px solid rgba(148,163,184,.22); color:#e2e8f0; font-weight:600;
+    }
+    nav.tabs button.active { background: var(--brand); border-color: transparent; }
+    .topbar {
+      display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 14px;
+      flex-wrap:wrap;
+    }
+    .userbox {
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    }
+    .login-wrap {
+      min-height: calc(100vh - 40px);
+      display:grid; place-items:center;
+    }
+    .login-card {
+      width:min(480px, calc(100% - 24px));
+      background: rgba(15,23,42,.88);
+      border: 1px solid rgba(148,163,184,.18);
+      border-radius: 26px; padding: 22px; box-shadow: var(--shadow);
+    }
+    .footer-note {
+      margin-top: 16px; color: var(--muted); font-size: .9rem;
+    }
+    .right { text-align:right; }
+    .linklike { background: transparent; color:#93c5fd; padding: 0; border:none; width:auto; }
+    @media (max-width: 980px) {
+      .col-8, .col-6, .col-4, .col-3 { grid-column: span 12; }
+      .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 700px) {
+      .item { grid-template-columns: 1fr; }
+      .poster { width: 100%; height: 220px; }
+      .field.half, .field.third, .field.two-thirds { grid-column: span 12; }
+      .stats { grid-template-columns: 1fr; }
+      .toolbar .filters input, .toolbar .filters select { width: 100%; min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script>
+    const STORAGE = {
+      users: 'filmportal_users_v1',
+      requests: 'filmportal_requests_v1',
+      session: 'filmportal_session_v1',
+      settings: 'filmportal_settings_v1'
+    };
+
+    const seedIfEmpty = () => {
+      if (!localStorage.getItem(STORAGE.users)) {
+        const users = [
+          { id: crypto.randomUUID(), username: 'admin', password: 'admin123', role: 'admin', displayName: 'Administrator', createdAt: new Date().toISOString() },
+          { id: crypto.randomUUID(), username: 'bruker1', password: 'bruker123', role: 'user', displayName: 'Bruker 1', createdAt: new Date().toISOString() }
+        ];
+        localStorage.setItem(STORAGE.users, JSON.stringify(users));
+      }
+      if (!localStorage.getItem(STORAGE.requests)) {
+        localStorage.setItem(STORAGE.requests, JSON.stringify([
+          {
+            id: crypto.randomUUID(),
+            title: 'The Batman',
+            type: 'movie',
+            requestedBy: 'bruker1',
+            requestedByName: 'Bruker 1',
+            requestedAt: new Date().toISOString(),
+            year: '2022',
+            imdbID: 'tt1877830',
+            poster: 'https://m.media-amazon.com/images/M/MV5BM2...jpg',
+            note: 'Gjerne i best mulig kvalitet',
+            status: 'new',
+            downloaded: false,
+            adminSeen: false
+          }
+        ]));
+      }
+      if (!localStorage.getItem(STORAGE.settings)) {
+        localStorage.setItem(STORAGE.settings, JSON.stringify({ omdbApiKey: '', adminEmail: '' }));
+      }
+    };
+
+    const getUsers = () => JSON.parse(localStorage.getItem(STORAGE.users) || '[]');
+    const saveUsers = (users) => localStorage.setItem(STORAGE.users, JSON.stringify(users));
+    const getRequests = () => JSON.parse(localStorage.getItem(STORAGE.requests) || '[]');
+    const saveRequests = (requests) => localStorage.setItem(STORAGE.requests, JSON.stringify(requests));
+    const getSettings = () => JSON.parse(localStorage.getItem(STORAGE.settings) || '{}');
+    const saveSettings = (settings) => localStorage.setItem(STORAGE.settings, JSON.stringify(settings));
+    const getSession = () => JSON.parse(localStorage.getItem(STORAGE.session) || 'null');
+    const saveSession = (session) => localStorage.setItem(STORAGE.session, JSON.stringify(session));
+
+    const escapeHtml = (s='') => String(s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
+    const fmtDate = (iso) => {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleString('no-NO'); } catch { return iso; }
+    };
+
+    let state = {
+      view: 'dashboard',
+      filterText: '',
+      filterType: 'all',
+      filterStatus: 'all'
+    };
+
+    seedIfEmpty();
+
+    function login(username, password) {
+      const user = getUsers().find(u => u.username === username && u.password === password);
+      if (!user) return false;
+      saveSession({ id: user.id, username: user.username, role: user.role, displayName: user.displayName });
+      return true;
+    }
+
+    function logout() {
+      localStorage.removeItem(STORAGE.session);
+      render();
+    }
+
+    function createUser({ username, password, displayName, role }) {
+      const users = getUsers();
+      if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+        throw new Error('Brukernavnet finnes allerede.');
+      }
+      users.push({ id: crypto.randomUUID(), username, password, displayName, role, createdAt: new Date().toISOString() });
+      saveUsers(users);
+    }
+
+    async function checkOmdb(title, type) {
+      const { omdbApiKey } = getSettings();
+      if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
+      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&t=${encodeURIComponent(title)}${type && type !== 'any' ? `&type=${encodeURIComponent(type)}` : ''}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.Response === 'False') throw new Error(data.Error || 'Fant ikke tittel.');
+      return data;
+    }
+
+    function createRequest(payload) {
+      const session = getSession();
+      const requests = getRequests();
+      requests.unshift({
+        id: crypto.randomUUID(),
+        requestedBy: session.username,
+        requestedByName: session.displayName || session.username,
+        requestedAt: new Date().toISOString(),
+        status: 'new',
+        downloaded: false,
+        adminSeen: false,
+        ...payload
+      });
+      saveRequests(requests);
+    }
+
+    function updateRequest(id, patch) {
+      const requests = getRequests().map(r => r.id === id ? { ...r, ...patch } : r);
+      saveRequests(requests);
+    }
+
+    function deleteUser(id) {
+      const session = getSession();
+      const users = getUsers();
+      const user = users.find(u => u.id === id);
+      if (!user) return;
+      if (user.username === 'admin') throw new Error('Standard admin kan ikke slettes i denne demoen.');
+      if (session?.id === id) throw new Error('Du kan ikke slette brukeren du er logget inn som.');
+      saveUsers(users.filter(u => u.id !== id));
+    }
+
+    function markAdminSeenAll() {
+      const requests = getRequests().map(r => ({ ...r, adminSeen: true }));
+      saveRequests(requests);
+    }
+
+    function matchRequest(r) {
+      const text = state.filterText.trim().toLowerCase();
+      const typeOk = state.filterType === 'all' || r.type === state.filterType;
+      const statusOk = state.filterStatus === 'all'
+        || (state.filterStatus === 'downloaded' && r.downloaded)
+        || (state.filterStatus === 'wanted' && !r.downloaded)
+        || (state.filterStatus === 'new' && !r.adminSeen);
+      const textOk = !text || [r.title, r.requestedBy, r.requestedByName, r.year, r.note].filter(Boolean).join(' ').toLowerCase().includes(text);
+      return typeOk && statusOk && textOk;
+    }
+
+    function getPoster(url) {
+      if (!url || url === 'N/A') return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="400" height="600">
+          <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#334155"/><stop offset="1" stop-color="#1e293b"/></linearGradient></defs>
+          <rect width="100%" height="100%" fill="url(#g)"/>
+          <g fill="#cbd5e1" font-family="Arial, sans-serif" text-anchor="middle">
+            <text x="200" y="280" font-size="28">Ingen plakat</text>
+            <text x="200" y="320" font-size="18">Filmønskeportal</text>
+          </g>
+        </svg>`);
+      return url;
+    }
+
+    function requestCard(r, isAdmin) {
+      const chips = [];
+      chips.push(`<span class="chip ${r.downloaded ? 'done' : 'dark'}">${r.downloaded ? 'Lastet ned' : 'Ikke lastet ned'}</span>`);
+      chips.push(`<span class="chip dark">${r.type === 'series' ? 'Serie' : 'Film'}</span>`);
+      if (!r.adminSeen) chips.push('<span class="chip new">Nytt ønske</span>');
+      if (r.year) chips.push(`<span class="chip dark">Utgitt: ${escapeHtml(r.year)}</span>`);
+      return `
+        <div class="item">
+          <img class="poster" src="${getPoster(r.poster)}" alt="Plakat for ${escapeHtml(r.title)}" onerror="this.src='${getPoster('')}'" />
+          <div>
+            <div class="toolbar" style="margin-bottom:6px;">
+              <div>
+                <h3 style="margin:0;">${escapeHtml(r.title)}</h3>
+                <div class="small muted">Lagt inn av <strong>${escapeHtml(r.requestedByName || r.requestedBy)}</strong> · ${fmtDate(r.requestedAt)}</div>
+              </div>
+              ${isAdmin ? `
+                <div class="btn-row">
+                  <button class="${r.downloaded ? 'btn-secondary' : 'btn-ok'}" onclick="toggleDownloaded('${r.id}')">${r.downloaded ? 'Angre lastet ned' : 'Marker som lastet ned'}</button>
+                  ${!r.adminSeen ? `<button class="btn-ghost" onclick="markSeen('${r.id}')">Marker som lest</button>` : ''}
+                </div>
+              ` : ''}
+            </div>
+            <div class="meta">${chips.join('')}</div>
+            ${r.imdbID ? `<div class="small"><a href="https://www.imdb.com/title/${encodeURIComponent(r.imdbID)}/" target="_blank" rel="noopener">Åpne på IMDb</a></div>` : ''}
+            ${r.note ? `<p style="margin:10px 0 0;">${escapeHtml(r.note)}</p>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderLogin() {
+      document.getElementById('app').innerHTML = `
+        <div class="login-wrap">
+          <div class="login-card">
+            <h1 style="margin-top:0;">Filmønskeportal</h1>
+            <p class="muted">Mobilvennlig portal for film- og serieønsker.</p>
+            <div class="notice info">Demo-brukere: <strong>admin / admin123</strong> og <strong>bruker1 / bruker123</strong></div>
+            <form id="loginForm">
+              <div>
+                <label for="loginUsername">Brukernavn</label>
+                <input id="loginUsername" required autocomplete="username" />
+              </div>
+              <div>
+                <label for="loginPassword">Passord</label>
+                <input id="loginPassword" type="password" required autocomplete="current-password" />
+              </div>
+              <button type="submit">Logg inn</button>
+            </form>
+            <div id="loginMsg" class="footer-note">Tips: Legg inn OMDb API-nøkkel etter innlogging for automatisk sjekk mot IMDb-data.</div>
+          </div>
+        </div>
+      `;
+      document.getElementById('loginForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const ok = login(document.getElementById('loginUsername').value.trim(), document.getElementById('loginPassword').value);
+        const msg = document.getElementById('loginMsg');
+        if (!ok) {
+          msg.textContent = 'Feil brukernavn eller passord.';
+          msg.style.color = '#fca5a5';
+          return;
+        }
+        render();
+      });
+    }
+
+    function renderApp() {
+      const session = getSession();
+      const isAdmin = session.role === 'admin';
+      const users = getUsers();
+      const requests = getRequests();
+      const settings = getSettings();
+      const newCount = requests.filter(r => !r.adminSeen).length;
+      const downloadedCount = requests.filter(r => r.downloaded).length;
+      const wantedCount = requests.filter(r => !r.downloaded).length;
+      const usersCount = users.filter(u => u.role === 'user').length;
+      const filtered = requests.filter(matchRequest);
+
+      document.getElementById('app').innerHTML = `
+        <div class="container">
+          <div class="hero">
+            <div>
+              <h1>Filmønskeportal</h1>
+              <p>Brukere kan legge inn film- og serieønsker. Admin kan opprette brukere, se hvem som har spurt og markere hva som er lastet ned.</p>
+            </div>
+            <div class="badge"><span class="dot"></span>${isAdmin ? `Nye ønsker: ${newCount}` : `Innlogget som ${escapeHtml(session.displayName || session.username)}`}</div>
+          </div>
+
+          <div class="topbar">
+            <nav class="tabs">
+              <button class="${state.view === 'dashboard' ? 'active' : ''}" onclick="setView('dashboard')">Oversikt</button>
+              <button class="${state.view === 'requests' ? 'active' : ''}" onclick="setView('requests')">Ønskeliste</button>
+              <button class="${state.view === 'newRequest' ? 'active' : ''}" onclick="setView('newRequest')">Nytt ønske</button>
+              ${isAdmin ? `<button class="${state.view === 'admin' ? 'active' : ''}" onclick="setView('admin')">Admin</button>` : ''}
+              <button class="${state.view === 'settings' ? 'active' : ''}" onclick="setView('settings')">Innstillinger</button>
+            </nav>
+            <div class="userbox">
+              <span class="muted">${escapeHtml(session.displayName || session.username)} (${session.role === 'admin' ? 'Admin' : 'Bruker'})</span>
+              <button class="btn-secondary" style="width:auto;" onclick="logout()">Logg ut</button>
+            </div>
+          </div>
+
+          <div ${state.view !== 'dashboard' ? 'class="hidden"' : ''}>
+            <div class="grid">
+              <div class="col-12 card">
+                <div class="stats">
+                  <div class="stat"><div class="label">Totale ønsker</div><div class="value">${requests.length}</div></div>
+                  <div class="stat"><div class="label">Ikke lastet ned</div><div class="value">${wantedCount}</div></div>
+                  <div class="stat"><div class="label">Lastet ned</div><div class="value">${downloadedCount}</div></div>
+                  <div class="stat"><div class="label">Brukere</div><div class="value">${usersCount}</div></div>
+                </div>
+              </div>
+              <div class="col-8 card">
+                <div class="toolbar">
+                  <h2 style="margin:0;">Siste ønsker</h2>
+                  ${isAdmin && newCount ? `<button class="btn-ghost" style="width:auto;" onclick="markAllSeen()">Marker alle som lest</button>` : ''}
+                </div>
+                <div class="list">
+                  ${requests.slice(0,5).map(r => requestCard(r, isAdmin)).join('') || '<div class="muted">Ingen ønsker enda.</div>'}
+                </div>
+              </div>
+              <div class="col-4 card">
+                <h2>Varsling</h2>
+                <div class="notice info">
+                  <strong>Anbefalt løsning:</strong> Start med <strong>e-post</strong> for adminvarsler. Det er billigere, enklere og fint for nye ønsker. SMS passer best hvis det er kritisk at admin får beskjed umiddelbart, men det koster mer og krever ekstern SMS-tjeneste.
+                </div>
+                <ul class="small muted">
+                  <li>I denne HTML-versjonen vises nye ønsker som badge og markering i systemet.</li>
+                  <li>Neste steg kan være e-post via for eksempel EmailJS / webhook / Firebase Cloud Function.</li>
+                  <li>Hvis du vil, kan jeg lage en ekte Firebase-versjon i neste runde.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div ${state.view !== 'requests' ? 'class="hidden"' : ''}>
+            <div class="card">
+              <div class="toolbar">
+                <div>
+                  <h2 style="margin:0;">Ønskeliste</h2>
+                  <div class="muted small">Filtrer på tekst, type og status.</div>
+                </div>
+                <div class="filters">
+                  <input placeholder="Søk etter tittel, bruker eller år" value="${escapeHtml(state.filterText)}" oninput="setFilterText(this.value)" />
+                  <select onchange="setFilterType(this.value)">
+                    <option value="all" ${state.filterType === 'all' ? 'selected' : ''}>Alle typer</option>
+                    <option value="movie" ${state.filterType === 'movie' ? 'selected' : ''}>Film</option>
+                    <option value="series" ${state.filterType === 'series' ? 'selected' : ''}>Serie</option>
+                  </select>
+                  <select onchange="setFilterStatus(this.value)">
+                    <option value="all" ${state.filterStatus === 'all' ? 'selected' : ''}>Alle statuser</option>
+                    <option value="wanted" ${state.filterStatus === 'wanted' ? 'selected' : ''}>Ikke lastet ned</option>
+                    <option value="downloaded" ${state.filterStatus === 'downloaded' ? 'selected' : ''}>Lastet ned</option>
+                    <option value="new" ${state.filterStatus === 'new' ? 'selected' : ''}>Nye</option>
+                  </select>
+                </div>
+              </div>
+              <div class="list">${filtered.map(r => requestCard(r, isAdmin)).join('') || '<div class="muted">Ingen treff.</div>'}</div>
+            </div>
+          </div>
+
+          <div ${state.view !== 'newRequest' ? 'class="hidden"' : ''}>
+            <div class="grid">
+              <div class="col-7 card">
+                <h2>Nytt ønske</h2>
+                <form id="requestForm">
+                  <div class="row">
+                    <div class="field two-thirds">
+                      <label for="title">Tittel</label>
+                      <input id="title" required placeholder="F.eks. Dune: Part Two" />
+                    </div>
+                    <div class="field third">
+                      <label for="type">Type</label>
+                      <select id="type">
+                        <option value="movie">Film</option>
+                        <option value="series">Serie</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="btn-row">
+                    <button type="button" class="btn-secondary" onclick="lookupTitle()">Sjekk mot IMDb-data</button>
+                  </div>
+                  <div class="row">
+                    <div class="field half">
+                      <label for="year">Utgivelsesår</label>
+                      <input id="year" placeholder="Hentes automatisk ved treff" />
+                    </div>
+                    <div class="field half">
+                      <label for="imdbID">IMDb-ID</label>
+                      <input id="imdbID" placeholder="Hentes automatisk ved treff" />
+                    </div>
+                  </div>
+                  <div>
+                    <label for="poster">Plakat-URL</label>
+                    <input id="poster" placeholder="Hentes automatisk ved treff" />
+                  </div>
+                  <div>
+                    <label for="note">Kommentar</label>
+                    <textarea id="note" placeholder="Ekstra info, kvalitet, språk, sesong osv."></textarea>
+                  </div>
+                  <button type="submit">Lagre ønske</button>
+                </form>
+                <div id="requestMsg" class="footer-note"></div>
+              </div>
+              <div class="col-5 card">
+                <h2>Tips</h2>
+                <div class="notice warn">
+                  IMDb-sjekken bruker <strong>OMDb API</strong> i denne versjonen. Legg inn API-nøkkel under <strong>Innstillinger</strong> for automatisk treff på tittel, år og IMDb-ID.
+                </div>
+                <ul class="small muted">
+                  <li>Brukeren kan fortsatt lagre ønsket selv uten API-nøkkel.</li>
+                  <li>Admin ser alltid hvem som la inn ønsket og når det ble lagt inn.</li>
+                  <li>Nye ønsker vises som <strong>Nytt ønske</strong> for admin til de blir markert som lest.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div ${state.view !== 'admin' || !isAdmin ? 'class="hidden"' : ''}>
+            <div class="grid">
+              <div class="col-5 card">
+                <h2>Opprett bruker</h2>
+                <form id="userForm">
+                  <div>
+                    <label for="displayName">Navn</label>
+                    <input id="displayName" required />
+                  </div>
+                  <div>
+                    <label for="username">Brukernavn</label>
+                    <input id="username" required />
+                  </div>
+                  <div>
+                    <label for="password">Passord</label>
+                    <input id="password" required />
+                  </div>
+                  <div>
+                    <label for="role">Rolle</label>
+                    <select id="role">
+                      <option value="user">Bruker</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <button type="submit">Opprett bruker</button>
+                </form>
+                <div id="userMsg" class="footer-note"></div>
+              </div>
+              <div class="col-7 card">
+                <div class="toolbar">
+                  <h2 style="margin:0;">Brukere</h2>
+                  <div class="muted small">Admin kan opprette nye brukere her.</div>
+                </div>
+                <div class="list">
+                  ${users.map(u => `
+                    <div class="item" style="grid-template-columns:1fr;">
+                      <div class="toolbar" style="margin:0;">
+                        <div>
+                          <strong>${escapeHtml(u.displayName || u.username)}</strong>
+                          <div class="small muted">${escapeHtml(u.username)} · ${u.role === 'admin' ? 'Admin' : 'Bruker'} · Opprettet ${fmtDate(u.createdAt)}</div>
+                        </div>
+                        ${u.username !== 'admin' ? `<button class="btn-danger" style="width:auto;" onclick="removeUser('${u.id}')">Slett</button>` : ''}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div ${state.view !== 'settings' ? 'class="hidden"' : ''}>
+            <div class="grid">
+              <div class="col-6 card">
+                <h2>Innstillinger</h2>
+                <form id="settingsForm">
+                  <div>
+                    <label for="omdbApiKey">OMDb API-nøkkel</label>
+                    <input id="omdbApiKey" value="${escapeHtml(settings.omdbApiKey || '')}" placeholder="F.eks. xxxxxxxx" />
+                  </div>
+                  <div>
+                    <label for="adminEmail">Admin e-post (for senere varsling)</label>
+                    <input id="adminEmail" value="${escapeHtml(settings.adminEmail || '')}" placeholder="navn@firma.no" />
+                  </div>
+                  <button type="submit">Lagre innstillinger</button>
+                </form>
+                <div id="settingsMsg" class="footer-note"></div>
+              </div>
+              <div class="col-6 card">
+                <h2>Om varsling</h2>
+                <div class="notice info">
+                  <strong>Min anbefaling:</strong> bruk <strong>e-post</strong> først. Det er enklest og mest kostnadseffektivt for nye filmønsker. SMS er best hvis du må ha nesten umiddelbar respons, men det krever betaling og integrasjon mot en SMS-leverandør.
+                </div>
+                <ul class="small muted">
+                  <li><strong>E-post:</strong> billig, lett å implementere, passer godt for ønskelister.</li>
+                  <li><strong>SMS:</strong> raskere å oppdage, men dyrere og mer arbeid å sette opp.</li>
+                  <li><strong>I appen:</strong> badge, markering og "nye ønsker" fungerer allerede i denne versjonen.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // bind forms after render
+      const requestForm = document.getElementById('requestForm');
+      if (requestForm) {
+        requestForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const payload = {
+            title: document.getElementById('title').value.trim(),
+            type: document.getElementById('type').value,
+            year: document.getElementById('year').value.trim(),
+            imdbID: document.getElementById('imdbID').value.trim(),
+            poster: document.getElementById('poster').value.trim(),
+            note: document.getElementById('note').value.trim()
+          };
+          if (!payload.title) return;
+          createRequest(payload);
+          document.getElementById('requestMsg').textContent = 'Ønsket er lagret.';
+          document.getElementById('requestMsg').style.color = '#86efac';
+          requestForm.reset();
+          render();
+          setTimeout(() => { state.view = 'requests'; render(); }, 450);
+        });
+      }
+
+      const userForm = document.getElementById('userForm');
+      if (userForm) {
+        userForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          try {
+            createUser({
+              displayName: document.getElementById('displayName').value.trim(),
+              username: document.getElementById('username').value.trim(),
+              password: document.getElementById('password').value,
+              role: document.getElementById('role').value
+            });
+            document.getElementById('userMsg').textContent = 'Bruker opprettet.';
+            document.getElementById('userMsg').style.color = '#86efac';
+            userForm.reset();
+            render();
+          } catch (err) {
+            document.getElementById('userMsg').textContent = err.message;
+            document.getElementById('userMsg').style.color = '#fca5a5';
+          }
+        });
+      }
+
+      const settingsForm = document.getElementById('settingsForm');
+      if (settingsForm) {
+        settingsForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          saveSettings({
+            omdbApiKey: document.getElementById('omdbApiKey').value.trim(),
+            adminEmail: document.getElementById('adminEmail').value.trim()
+          });
+          const el = document.getElementById('settingsMsg');
+          el.textContent = 'Innstillinger lagret.';
+          el.style.color = '#86efac';
+        });
+      }
+    }
+
+    window.setView = (view) => { state.view = view; render(); };
+    window.setFilterText = (val) => { state.filterText = val; render(); };
+    window.setFilterType = (val) => { state.filterType = val; render(); };
+    window.setFilterStatus = (val) => { state.filterStatus = val; render(); };
+    window.toggleDownloaded = (id) => {
+      const r = getRequests().find(x => x.id === id); if (!r) return;
+      updateRequest(id, { downloaded: !r.downloaded, status: !r.downloaded ? 'downloaded' : 'new' });
+      render();
+    };
+    window.markSeen = (id) => { updateRequest(id, { adminSeen: true }); render(); };
+    window.markAllSeen = () => { markAdminSeenAll(); render(); };
+    window.removeUser = (id) => {
+      if (!confirm('Slette bruker?')) return;
+      try { deleteUser(id); render(); } catch (err) { alert(err.message); }
+    };
+    window.lookupTitle = async () => {
+      const title = document.getElementById('title')?.value.trim();
+      const type = document.getElementById('type')?.value;
+      const msg = document.getElementById('requestMsg');
+      if (!title) {
+        msg.textContent = 'Skriv inn en tittel først.';
+        msg.style.color = '#fca5a5';
+        return;
+      }
+      msg.textContent = 'Søker ...';
+      msg.style.color = '#93c5fd';
+      try {
+        const data = await checkOmdb(title, type);
+        document.getElementById('year').value = data.Year || '';
+        document.getElementById('imdbID').value = data.imdbID || '';
+        document.getElementById('poster').value = data.Poster && data.Poster !== 'N/A' ? data.Poster : '';
+        msg.textContent = `Fant treff: ${data.Title} (${data.Year || 'ukjent år'})`;
+        msg.style.color = '#86efac';
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.style.color = '#fca5a5';
+      }
+    };
+
+    function render() {
+      const session = getSession();
+      if (!session) return renderLogin();
+      return renderApp();
+    }
+
+    render();
+  </script>
+</body>
+</html>
