@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Filmønskeportal 2026</title>
+  <title>Filmønskeportal</title>
   <style>
     :root{
       --bg:#0f172a;
@@ -56,8 +56,6 @@
       color:#e2e8f0; padding:8px 12px; border-radius:999px; font-size:.92rem;
     }
     .dot { width:8px; height:8px; border-radius:50%; background: var(--ok); display:inline-block; }
-    .dot.warn { background: var(--warn); }
-    .dot.off { background: #64748b; }
     .grid {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
@@ -204,6 +202,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBNoxK5we1GymQyEqv2l9rBXh_mg77V-qI",
@@ -215,16 +214,47 @@
       appId: "1:151608748582:web:af434abef55190b959d4e7"
     };
 
+    window.firebaseApp = null;
+    window.firebaseDb = null;
+    window.firebaseConnected = false;
+    window.firebaseDbConnected = false;
+    window.firebaseStatusText = 'Firebase ikke koblet til';
+
     try {
       const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
       window.firebaseApp = app;
+      window.firebaseDb = db;
       window.firebaseConfig = firebaseConfig;
       window.firebaseConnected = true;
-      window.firebaseStatusText = 'Firebase tilkoblet';
+      window.firebaseStatusText = 'Firebase tilkoblet · tester Realtime Database ...';
       console.log('Firebase initialisert', app);
+
+      const connectedRef = ref(db, '.info/connected');
+      onValue(connectedRef, (snapshot) => {
+        const isConnected = snapshot.val() === true;
+        window.firebaseDbConnected = isConnected;
+        if (isConnected) {
+          window.firebaseStatusText = 'Firebase tilkoblet · Realtime Database tilkoblet';
+        } else {
+          window.firebaseStatusText = 'Firebase tilkoblet · Realtime Database frakoblet';
+        }
+        if (typeof window.render === 'function') {
+          window.render();
+        }
+      }, (error) => {
+        window.firebaseDbConnected = false;
+        window.firebaseStatusText = 'RTDB-feil: ' + (error?.message || error);
+        console.error('RTDB-status-feil', error);
+        if (typeof window.render === 'function') {
+          window.render();
+        }
+      });
     } catch (err) {
       window.firebaseApp = null;
+      window.firebaseDb = null;
       window.firebaseConnected = false;
+      window.firebaseDbConnected = false;
       window.firebaseStatusText = 'Firebase-feil: ' + (err?.message || err);
       console.error('Firebase init-feil', err);
     }
@@ -291,14 +321,20 @@
     };
 
     function getFirebaseStatus() {
-      if (window.firebaseConnected === true) {
-        return { text: window.firebaseStatusText || 'Firebase tilkoblet', dotClass: '' };
+      if (window.firebaseStatusText && String(window.firebaseStatusText).startsWith('RTDB-feil:')) {
+        return { text: window.firebaseStatusText, dotClass: 'off' };
       }
       if (window.firebaseStatusText && String(window.firebaseStatusText).startsWith('Firebase-feil:')) {
         return { text: window.firebaseStatusText, dotClass: 'off' };
       }
+      if (window.firebaseConnected === true && window.firebaseDbConnected === true) {
+        return { text: window.firebaseStatusText || 'Firebase tilkoblet · Realtime Database tilkoblet', dotClass: '' };
+      }
+      if (window.firebaseConnected === true && window.firebaseDbConnected === false) {
+        return { text: window.firebaseStatusText || 'Firebase tilkoblet · Realtime Database frakoblet', dotClass: 'warn' };
+      }
       if (window.firebaseConfig) {
-        return { text: 'Firebase konfigurert', dotClass: 'warn' };
+        return { text: window.firebaseStatusText || 'Firebase konfigurert', dotClass: 'warn' };
       }
       return { text: 'Firebase ikke koblet til', dotClass: 'off' };
     }
@@ -451,7 +487,6 @@
               </div>
               <button type="submit">Logg inn</button>
             </form>
-            <div class="footer-note"><span class="badge"><span class="dot ${getFirebaseStatus().dotClass}"></span>${getFirebaseStatus().text}</span></div>
             <div id="loginMsg" class="footer-note">Tips: Legg inn OMDb API-nøkkel etter innlogging for automatisk sjekk mot IMDb-data.</div>
           </div>
         </div>
@@ -475,7 +510,6 @@
       const users = getUsers();
       const requests = getRequests();
       const settings = getSettings();
-      const firebaseStatus = getFirebaseStatus();
       const newCount = requests.filter(r => !r.adminSeen).length;
       const downloadedCount = requests.filter(r => r.downloaded).length;
       const wantedCount = requests.filter(r => !r.downloaded).length;
@@ -502,7 +536,6 @@
             </nav>
             <div class="userbox">
               <span class="muted">${escapeHtml(session.displayName || session.username)} (${session.role === 'admin' ? 'Admin' : 'Bruker'})</span>
-              <span class="badge"><span class="dot ${firebaseStatus.dotClass}"></span>${firebaseStatus.text}</span>
               <button class="btn-secondary" style="width:auto;" onclick="logout()">Logg ut</button>
             </div>
           </div>
@@ -688,6 +721,9 @@
                   </div>
                   <button type="submit">Lagre innstillinger</button>
                 </form>
+                <div class="btn-row" style="margin-top:10px;">
+                  <button type="button" class="btn-secondary" onclick="testFirebaseDbConnection()">Test Realtime Database nå</button>
+                </div>
                 <div id="settingsMsg" class="footer-note"></div>
               </div>
               <div class="col-6 card">
@@ -803,6 +839,20 @@
         msg.textContent = err.message;
         msg.style.color = '#fca5a5';
       }
+    };
+
+    window.testFirebaseDbConnection = () => {
+      if (!window.firebaseConfig) {
+        alert('Firebase config mangler.');
+        return;
+      }
+      if (!window.firebaseApp || !window.firebaseDb) {
+        alert('Firebase er ikke initialisert enda.');
+        return;
+      }
+      const status = getFirebaseStatus();
+      alert('Status akkurat nå: ' + status.text);
+      render();
     };
 
     function render() {
