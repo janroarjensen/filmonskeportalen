@@ -56,6 +56,8 @@
       color:#e2e8f0; padding:8px 12px; border-radius:999px; font-size:.92rem;
     }
     .dot { width:8px; height:8px; border-radius:50%; background: var(--ok); display:inline-block; }
+    .dot.warn { background: var(--warn); }
+    .dot.off { background: #64748b; }
     .grid {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
@@ -200,10 +202,9 @@
 <body>
   <div id="app"></div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyBNoxK5we1GymQyEqv2l9rBXh_mg77V-qI",
       authDomain: "filmonskeportal.firebaseapp.com",
@@ -219,40 +220,26 @@
     window.firebaseConnected = false;
     window.firebaseDbConnected = false;
     window.firebaseStatusText = 'Firebase ikke koblet til';
+    window.firebaseConfig = firebaseConfig;
 
     try {
-      const app = initializeApp(firebaseConfig);
-      const db = getDatabase(app);
-      window.firebaseApp = app;
-      window.firebaseDb = db;
-      window.firebaseConfig = firebaseConfig;
+      window.firebaseApp = firebase.initializeApp(firebaseConfig);
+      window.firebaseDb = firebase.database();
       window.firebaseConnected = true;
       window.firebaseStatusText = 'Firebase tilkoblet · tester Realtime Database ...';
-      console.log('Firebase initialisert', app);
-
-      const connectedRef = ref(db, '.info/connected');
-      onValue(connectedRef, (snapshot) => {
+      firebase.database().ref('.info/connected').on('value', (snapshot) => {
         const isConnected = snapshot.val() === true;
         window.firebaseDbConnected = isConnected;
-        if (isConnected) {
-          window.firebaseStatusText = 'Firebase tilkoblet · Realtime Database tilkoblet';
-        } else {
-          window.firebaseStatusText = 'Firebase tilkoblet · Realtime Database frakoblet';
-        }
-        if (typeof window.render === 'function') {
-          window.render();
-        }
+        window.firebaseStatusText = isConnected
+          ? 'Firebase tilkoblet · Realtime Database tilkoblet'
+          : 'Firebase tilkoblet · Realtime Database frakoblet';
+        if (typeof window.render === 'function') window.render();
       }, (error) => {
         window.firebaseDbConnected = false;
         window.firebaseStatusText = 'RTDB-feil: ' + (error?.message || error);
-        console.error('RTDB-status-feil', error);
-        if (typeof window.render === 'function') {
-          window.render();
-        }
+        if (typeof window.render === 'function') window.render();
       });
     } catch (err) {
-      window.firebaseApp = null;
-      window.firebaseDb = null;
       window.firebaseConnected = false;
       window.firebaseDbConnected = false;
       window.firebaseStatusText = 'Firebase-feil: ' + (err?.message || err);
@@ -267,7 +254,7 @@
       settings: 'filmportal_settings_v1'
     };
 
-    const seedIfEmpty = () => {
+    const seedIfEmpty = async () => {
       if (!localStorage.getItem(STORAGE.users)) {
         const users = [
           { id: crypto.randomUUID(), username: 'admin', password: 'admin123', role: 'admin', displayName: 'Administrator', createdAt: new Date().toISOString() },
@@ -275,10 +262,38 @@
         ];
         localStorage.setItem(STORAGE.users, JSON.stringify(users));
       }
-      if (!localStorage.getItem(STORAGE.requests)) {
-        localStorage.setItem(STORAGE.requests, JSON.stringify([
-          {
-            id: crypto.randomUUID(),
+
+      if (!window.firebaseDb) {
+        if (!localStorage.getItem(STORAGE.requests)) {
+          localStorage.setItem(STORAGE.requests, JSON.stringify([
+            {
+              id: crypto.randomUUID(),
+              title: 'The Batman',
+              type: 'movie',
+              requestedBy: 'bruker1',
+              requestedByName: 'Bruker 1',
+              requestedAt: new Date().toISOString(),
+              year: '2022',
+              imdbID: 'tt1877830',
+              poster: 'https://m.media-amazon.com/images/M/MV5BM2...jpg',
+              note: 'Gjerne i best mulig kvalitet',
+              status: 'new',
+              downloaded: false,
+              adminSeen: false
+            }
+          ]));
+        }
+        if (!localStorage.getItem(STORAGE.settings)) {
+          localStorage.setItem(STORAGE.settings, JSON.stringify({ omdbApiKey: '', adminEmail: '' }));
+        }
+        return;
+      }
+
+      try {
+        const requestsSnap = await window.firebaseDb.ref('requests').once('value');
+        if (!requestsSnap.exists()) {
+          const newRef = window.firebaseDb.ref('requests').push();
+          await newRef.set({
             title: 'The Batman',
             type: 'movie',
             requestedBy: 'bruker1',
@@ -291,20 +306,60 @@
             status: 'new',
             downloaded: false,
             adminSeen: false
-          }
-        ]));
-      }
-      if (!localStorage.getItem(STORAGE.settings)) {
-        localStorage.setItem(STORAGE.settings, JSON.stringify({ omdbApiKey: '', adminEmail: '' }));
+          });
+        }
+        const settingsSnap = await window.firebaseDb.ref('settings').once('value');
+        if (!settingsSnap.exists()) {
+          await window.firebaseDb.ref('settings').set({ omdbApiKey: '', adminEmail: '' });
+        }
+      } catch (err) {
+        console.error('Seed mot Realtime Database feilet', err);
       }
     };
 
     const getUsers = () => JSON.parse(localStorage.getItem(STORAGE.users) || '[]');
     const saveUsers = (users) => localStorage.setItem(STORAGE.users, JSON.stringify(users));
-    const getRequests = () => JSON.parse(localStorage.getItem(STORAGE.requests) || '[]');
-    const saveRequests = (requests) => localStorage.setItem(STORAGE.requests, JSON.stringify(requests));
-    const getSettings = () => JSON.parse(localStorage.getItem(STORAGE.settings) || '{}');
-    const saveSettings = (settings) => localStorage.setItem(STORAGE.settings, JSON.stringify(settings));
+
+    async function getRequests() {
+      if (!window.firebaseDb) {
+        return JSON.parse(localStorage.getItem(STORAGE.requests) || '[]');
+      }
+      const snapshot = await window.firebaseDb.ref('requests').once('value');
+      const data = snapshot.val() || {};
+      return Object.entries(data).map(([id, value]) => ({ id, ...value }));
+    }
+
+    async function saveRequests(requests) {
+      if (!window.firebaseDb) {
+        localStorage.setItem(STORAGE.requests, JSON.stringify(requests));
+        return;
+      }
+      const mapped = {};
+      for (const item of requests) {
+        const copy = { ...item };
+        const id = copy.id || crypto.randomUUID();
+        delete copy.id;
+        mapped[id] = copy;
+      }
+      await window.firebaseDb.ref('requests').set(mapped);
+    }
+
+    async function getSettings() {
+      if (!window.firebaseDb) {
+        return JSON.parse(localStorage.getItem(STORAGE.settings) || '{"omdbApiKey":"","adminEmail":""}');
+      }
+      const snapshot = await window.firebaseDb.ref('settings').once('value');
+      const data = snapshot.val() || { omdbApiKey: '', adminEmail: '' };
+      localStorage.setItem(STORAGE.settings, JSON.stringify(data));
+      return data;
+    }
+
+    async function saveSettings(settings) {
+      localStorage.setItem(STORAGE.settings, JSON.stringify(settings));
+      if (!window.firebaseDb) return;
+      await window.firebaseDb.ref('settings').set(settings);
+    }
+
     const getSession = () => JSON.parse(localStorage.getItem(STORAGE.session) || 'null');
     const saveSession = (session) => localStorage.setItem(STORAGE.session, JSON.stringify(session));
 
@@ -330,7 +385,7 @@
       if (window.firebaseConnected === true && window.firebaseDbConnected === true) {
         return { text: window.firebaseStatusText || 'Firebase tilkoblet · Realtime Database tilkoblet', dotClass: '' };
       }
-      if (window.firebaseConnected === true && window.firebaseDbConnected === false) {
+      if (window.firebaseConnected === true) {
         return { text: window.firebaseStatusText || 'Firebase tilkoblet · Realtime Database frakoblet', dotClass: 'warn' };
       }
       if (window.firebaseConfig) {
@@ -346,9 +401,8 @@
       filterStatus: 'all'
     };
 
-    seedIfEmpty();
 
-    function login(username, password) {
+    async function login(username, password) {
       const user = getUsers().find(u => u.username === username && u.password === password);
       if (!user) return false;
       saveSession({ id: user.id, username: user.username, role: user.role, displayName: user.displayName });
@@ -370,7 +424,7 @@
     }
 
     async function checkOmdb(title, type) {
-      const { omdbApiKey } = getSettings();
+      const { omdbApiKey } = await getSettings();
       if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
       const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&t=${encodeURIComponent(title)}${type && type !== 'any' ? `&type=${encodeURIComponent(type)}` : ''}`;
       const res = await fetch(url);
@@ -379,11 +433,9 @@
       return data;
     }
 
-    function createRequest(payload) {
+    async function createRequest(payload) {
       const session = getSession();
-      const requests = getRequests();
-      requests.unshift({
-        id: crypto.randomUUID(),
+      const request = {
         requestedBy: session.username,
         requestedByName: session.displayName || session.username,
         requestedAt: new Date().toISOString(),
@@ -391,13 +443,23 @@
         downloaded: false,
         adminSeen: false,
         ...payload
-      });
-      saveRequests(requests);
+      };
+      if (!window.firebaseDb) {
+        const requests = await getRequests();
+        requests.unshift({ id: crypto.randomUUID(), ...request });
+        await saveRequests(requests);
+        return;
+      }
+      await window.firebaseDb.ref('requests').push(request);
     }
 
-    function updateRequest(id, patch) {
-      const requests = getRequests().map(r => r.id === id ? { ...r, ...patch } : r);
-      saveRequests(requests);
+    async function updateRequest(id, patch) {
+      if (!window.firebaseDb) {
+        const requests = (await getRequests()).map(r => r.id === id ? { ...r, ...patch } : r);
+        await saveRequests(requests);
+        return;
+      }
+      await window.firebaseDb.ref(`requests/${id}`).update(patch);
     }
 
     function deleteUser(id) {
@@ -410,9 +472,15 @@
       saveUsers(users.filter(u => u.id !== id));
     }
 
-    function markAdminSeenAll() {
-      const requests = getRequests().map(r => ({ ...r, adminSeen: true }));
-      saveRequests(requests);
+    async function markAdminSeenAll() {
+      const requests = await getRequests();
+      if (!window.firebaseDb) {
+        await saveRequests(requests.map(r => ({ ...r, adminSeen: true })));
+        return;
+      }
+      const updates = {};
+      requests.forEach(r => { updates[`${r.id}/adminSeen`] = true; });
+      await window.firebaseDb.ref('requests').update(updates);
     }
 
     function matchRequest(r) {
@@ -487,13 +555,14 @@
               </div>
               <button type="submit">Logg inn</button>
             </form>
+            <div class="footer-note"><span class="badge"><span class="dot ${getFirebaseStatus().dotClass}"></span>${getFirebaseStatus().text}</span></div>
             <div id="loginMsg" class="footer-note">Tips: Legg inn OMDb API-nøkkel etter innlogging for automatisk sjekk mot IMDb-data.</div>
           </div>
         </div>
       `;
-      document.getElementById('loginForm').addEventListener('submit', (e) => {
+      document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const ok = login(document.getElementById('loginUsername').value.trim(), document.getElementById('loginPassword').value);
+        const ok = await login(document.getElementById('loginUsername').value.trim(), document.getElementById('loginPassword').value);
         const msg = document.getElementById('loginMsg');
         if (!ok) {
           msg.textContent = 'Feil brukernavn eller passord.';
@@ -504,12 +573,13 @@
       });
     }
 
-    function renderApp() {
+    async function renderApp() {
       const session = getSession();
       const isAdmin = session.role === 'admin';
       const users = getUsers();
-      const requests = getRequests();
-      const settings = getSettings();
+      const requests = await getRequests();
+      const settings = await getSettings();
+      const firebaseStatus = getFirebaseStatus();
       const newCount = requests.filter(r => !r.adminSeen).length;
       const downloadedCount = requests.filter(r => r.downloaded).length;
       const wantedCount = requests.filter(r => !r.downloaded).length;
@@ -536,6 +606,7 @@
             </nav>
             <div class="userbox">
               <span class="muted">${escapeHtml(session.displayName || session.username)} (${session.role === 'admin' ? 'Admin' : 'Bruker'})</span>
+              <span class="badge"><span class="dot ${firebaseStatus.dotClass}"></span>${firebaseStatus.text}</span>
               <button class="btn-secondary" style="width:auto;" onclick="logout()">Logg ut</button>
             </div>
           </div>
@@ -710,6 +781,7 @@
             <div class="grid">
               <div class="col-6 card">
                 <h2>Innstillinger</h2>
+                <div class="notice info" style="margin-top:10px;">Status akkurat nå: <strong>${firebaseStatus.text}</strong></div>
                 <form id="settingsForm">
                   <div>
                     <label for="omdbApiKey">OMDb API-nøkkel</label>
@@ -745,7 +817,7 @@
       // bind forms after render
       const requestForm = document.getElementById('requestForm');
       if (requestForm) {
-        requestForm.addEventListener('submit', (e) => {
+        requestForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           const payload = {
             title: document.getElementById('title').value.trim(),
@@ -756,12 +828,12 @@
             note: document.getElementById('note').value.trim()
           };
           if (!payload.title) return;
-          createRequest(payload);
+          await createRequest(payload);
           document.getElementById('requestMsg').textContent = 'Ønsket er lagret.';
           document.getElementById('requestMsg').style.color = '#86efac';
           requestForm.reset();
-          render();
-          setTimeout(() => { state.view = 'requests'; render(); }, 450);
+          await render();
+          setTimeout(async () => { state.view = 'requests'; await render(); }, 450);
         });
       }
 
@@ -789,9 +861,9 @@
 
       const settingsForm = document.getElementById('settingsForm');
       if (settingsForm) {
-        settingsForm.addEventListener('submit', (e) => {
+        settingsForm.addEventListener('submit', async (e) => {
           e.preventDefault();
-          saveSettings({
+          await saveSettings({
             omdbApiKey: document.getElementById('omdbApiKey').value.trim(),
             adminEmail: document.getElementById('adminEmail').value.trim()
           });
@@ -802,17 +874,17 @@
       }
     }
 
-    window.setView = (view) => { state.view = view; render(); };
-    window.setFilterText = (val) => { state.filterText = val; render(); };
-    window.setFilterType = (val) => { state.filterType = val; render(); };
-    window.setFilterStatus = (val) => { state.filterStatus = val; render(); };
-    window.toggleDownloaded = (id) => {
-      const r = getRequests().find(x => x.id === id); if (!r) return;
-      updateRequest(id, { downloaded: !r.downloaded, status: !r.downloaded ? 'downloaded' : 'new' });
-      render();
+    window.setView = async (view) => { state.view = view; await render(); };
+    window.setFilterText = async (val) => { state.filterText = val; await render(); };
+    window.setFilterType = async (val) => { state.filterType = val; await render(); };
+    window.setFilterStatus = async (val) => { state.filterStatus = val; await render(); };
+    window.toggleDownloaded = async (id) => {
+      const r = (await getRequests()).find(x => x.id === id); if (!r) return;
+      await updateRequest(id, { downloaded: !r.downloaded, status: !r.downloaded ? 'downloaded' : 'new' });
+      await render();
     };
-    window.markSeen = (id) => { updateRequest(id, { adminSeen: true }); render(); };
-    window.markAllSeen = () => { markAdminSeenAll(); render(); };
+    window.markSeen = async (id) => { await updateRequest(id, { adminSeen: true }); await render(); };
+    window.markAllSeen = async () => { await markAdminSeenAll(); await render(); };
     window.removeUser = (id) => {
       if (!confirm('Slette bruker?')) return;
       try { deleteUser(id); render(); } catch (err) { alert(err.message); }
@@ -841,26 +913,20 @@
       }
     };
 
-    window.testFirebaseDbConnection = () => {
-      if (!window.firebaseConfig) {
-        alert('Firebase config mangler.');
-        return;
-      }
-      if (!window.firebaseApp || !window.firebaseDb) {
-        alert('Firebase er ikke initialisert enda.');
-        return;
-      }
+    window.testFirebaseDbConnection = async () => {
       const status = getFirebaseStatus();
       alert('Status akkurat nå: ' + status.text);
-      render();
+      await render();
     };
 
-    function render() {
+    async function render() {
+      await seedIfEmpty();
       const session = getSession();
       if (!session) return renderLogin();
-      return renderApp();
+      return await renderApp();
     }
 
+    window.render = render;
     render();
   </script>
 </body>
