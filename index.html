@@ -32,7 +32,7 @@
     }
     a { color: var(--brand); }
     .container {
-      width: min(1440px, calc(100% - 32px));
+      width: min(1200px, calc(100% - 24px));
       margin: 20px auto 40px;
     }
     .hero {
@@ -186,20 +186,11 @@
     }
     .right { text-align:right; }
     .linklike { background: transparent; color:#93c5fd; padding: 0; border:none; width:auto; }
-    .new-request-main { grid-column: span 8; }
-    .new-request-side { grid-column: span 4; }
-    .new-request-main .card, .new-request-side .card { height: 100%; }
-    .new-request-main textarea { min-height: 160px; }
-    .new-request-main input, .new-request-main select, .new-request-main textarea { padding: 14px 16px; }
-    .new-request-main button { padding: 14px 18px; }
-    @media (max-width: 860px) {
-      .new-request-main, .new-request-side { grid-column: span 12; }
-    }
-    @media (max-width: 860px) {
+    @media (max-width: 980px) {
       .col-8, .col-6, .col-4, .col-3 { grid-column: span 12; }
       .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
     }
-    @media (max-width: 620px) {
+    @media (max-width: 700px) {
       .item { grid-template-columns: 1fr; }
       .poster { width: 100%; height: 220px; }
       .field.half, .field.third, .field.two-thirds { grid-column: span 12; }
@@ -470,6 +461,14 @@
       }
       await window.firebaseDb.ref(`requests/${id}`).update(patch);
     }
+    async function deleteRequest(id) {
+      if (!window.firebaseDb) {
+        const requests = (await getRequests()).filter(r => r.id !== id);
+        await saveRequests(requests);
+        return;
+      }
+      await window.firebaseDb.ref(`requests/${id}`).remove();
+    }
 
     function deleteUser(id) {
       const session = getSession();
@@ -535,6 +534,7 @@
                 <div class="btn-row">
                   <button class="${r.downloaded ? 'btn-secondary' : 'btn-ok'}" onclick="toggleDownloaded('${r.id}')">${r.downloaded ? 'Angre lastet ned' : 'Marker som lastet ned'}</button>
                   ${!r.adminSeen ? `<button class="btn-ghost" onclick="markSeen('${r.id}')">Marker som lest</button>` : ''}
+                  <button class="btn-danger" onclick="removeRequest('${r.id}', '${escapeHtml(r.title)}')">Slett</button>
                 </div>
               ` : ''}
             </div>
@@ -894,6 +894,20 @@
     };
     window.markSeen = async (id) => { await updateRequest(id, { adminSeen: true }); await render(); };
     window.markAllSeen = async () => { await markAdminSeenAll(); await render(); };
+    window.removeRequest = async (id, title) => {
+      const session = getSession();
+      if (!session || session.role !== 'admin') {
+        alert('Kun admin kan slette filmer og serier.');
+        return;
+      }
+      if (!confirm(`Er du sikker på at du vil slette "${title}"?`)) return;
+      try {
+        await deleteRequest(id);
+        await render();
+      } catch (err) {
+        alert('Kunne ikke slette ønske: ' + (err?.message || err));
+      }
+    };
     window.removeUser = (id) => {
       if (!confirm('Slette bruker?')) return;
       try { deleteUser(id); render(); } catch (err) { alert(err.message); }
