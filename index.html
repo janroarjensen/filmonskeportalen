@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Filmønskeportal 2026</title>
+  <title>Filmønskeportal</title>
   <style>
     :root{
       --bg:#0f172a;
@@ -32,7 +32,7 @@
     }
     a { color: var(--brand); }
     .container {
-      width: min(1380px, calc(100% - 28px));
+      width: min(1200px, calc(100% - 24px));
       margin: 20px auto 40px;
     }
     .hero {
@@ -246,7 +246,6 @@
       console.error('Firebase init-feil', err);
     }
   </script>
-
   <script>
     const STORAGE = {
       users: 'filmportal_users_v1',
@@ -402,6 +401,7 @@
       filterStatus: 'all'
     };
 
+
     async function login(username, password) {
       const user = getUsers().find(u => u.username === username && u.password === password);
       if (!user) return false;
@@ -459,8 +459,6 @@
         await saveRequests(requests);
         return;
       }
-      await window.firebaseDb.ref(`requests/${id}`).update(patch);
-    }
 
     async function deleteRequest(id) {
       if (!window.firebaseDb) {
@@ -469,6 +467,8 @@
         return;
       }
       await window.firebaseDb.ref(`requests/${id}`).remove();
+    }
+      await window.firebaseDb.ref(`requests/${id}`).update(patch);
     }
 
     function deleteUser(id) {
@@ -524,7 +524,11 @@
       if (r.year) chips.push(`<span class="chip dark">Utgitt: ${escapeHtml(r.year)}</span>`);
       return `
         <div class="item">
-          <img class="poster" src="${getPoster(r.poster)}" alt="Plakat for ${escapeHtml(r.title)}" onerror="this.src='${getPoster('')}'"          <h3 style="margin:0;">${escapeHtml(r.title)}</h3>
+          <img class="poster" src="${getPoster(r.poster)}" alt="Plakat for ${escapeHtml(r.title)}" onerror="this.src='${getPoster('')}'" />
+          <div>
+            <div class="toolbar" style="margin-bottom:6px;">
+              <div>
+                <h3 style="margin:0;">${escapeHtml(r.title)}</h3>
                 <div class="small muted">Lagt inn av <strong>${escapeHtml(r.requestedByName || r.requestedBy)}</strong> · ${fmtDate(r.requestedAt)}</div>
               </div>
               ${isAdmin ? `
@@ -536,7 +540,8 @@
               ` : ''}
             </div>
             <div class="meta">${chips.join('')}</div>
-            ${r.imdbID ? `<div class="small"><a href="https://www.imdb.com/title/${encodeURIComponent(r.imdbID)}/" target="_blank" rel="noopener  ${r.note ? `<p style="margin:10px 0 0;">${escapeHtml(r.note)}</p>` : ''}
+            ${r.imdbID ? `<div class="small"><a href="https://www.imdb.com/title/${encodeURIComponent(r.imdbID)}/" target="_blank" rel="noopener">Åpne på IMDb</a></div>` : ''}
+            ${r.note ? `<p style="margin:10px 0 0;">${escapeHtml(r.note)}</p>` : ''}
           </div>
         </div>
       `;
@@ -677,7 +682,7 @@
 
           <div ${state.view !== 'newRequest' ? 'class="hidden"' : ''}>
             <div class="grid">
-              <div class="col-8 card">
+              <div class="col-7 card">
                 <h2>Nytt ønske</h2>
                 <form id="requestForm">
                   <div class="row">
@@ -734,7 +739,7 @@
 
           <div ${state.view !== 'admin' || !isAdmin ? 'class="hidden"' : ''}>
             <div class="grid">
-              <div class="col-4 card">
+              <div class="col-5 card">
                 <h2>Opprett bruker</h2>
                 <form id="userForm">
                   <div>
@@ -760,7 +765,7 @@
                 </form>
                 <div id="userMsg" class="footer-note"></div>
               </div>
-              <div class="col-8 card">
+              <div class="col-7 card">
                 <div class="toolbar">
                   <h2 style="margin:0;">Brukere</h2>
                   <div class="muted small">Admin kan opprette nye brukere her.</div>
@@ -819,6 +824,7 @@
         </div>
       `;
 
+      // bind forms after render
       const requestForm = document.getElementById('requestForm');
       if (requestForm) {
         requestForm.addEventListener('submit', async (e) => {
@@ -882,32 +888,16 @@
     window.setFilterText = async (val) => { state.filterText = val; await render(); };
     window.setFilterType = async (val) => { state.filterType = val; await render(); };
     window.setFilterStatus = async (val) => { state.filterStatus = val; await render(); };
-
     window.toggleDownloaded = async (id) => {
-      const r = (await getRequests()).find(x => x.id === id);
-      if (!r) return;
+      const r = (await getRequests()).find(x => x.id === id); if (!r) return;
       await updateRequest(id, { downloaded: !r.downloaded, status: !r.downloaded ? 'downloaded' : 'new' });
       await render();
     };
-
-    window.markSeen = async (id) => {
-      await updateRequest(id, { adminSeen: true });
-      await render();
-    };
-
-    window.markAllSeen = async () => {
-      await markAdminSeenAll();
-      await render();
-    };
-
+    window.markSeen = async (id) => { await updateRequest(id, { adminSeen: true }); await render(); };
+    window.markAllSeen = async () => { await markAdminSeenAll(); await render(); };
     window.removeUser = (id) => {
       if (!confirm('Slette bruker?')) return;
-      try {
-        deleteUser(id);
-        render();
-      } catch (err) {
-        alert(err.message);
-      }
+      try { deleteUser(id); render(); } catch (err) { alert(err.message); }
     };
 
     window.removeRequest = async (id) => {
@@ -919,7 +909,6 @@
         alert(err.message || 'Kunne ikke slette ønsket.');
       }
     };
-
     window.lookupTitle = async () => {
       const title = document.getElementById('title')?.value.trim();
       const type = document.getElementById('type')?.value;
