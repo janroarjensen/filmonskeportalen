@@ -186,6 +186,10 @@
     }
     .right { text-align:right; }
     .linklike { background: transparent; color:#93c5fd; padding: 0; border:none; width:auto; }
+    .lookup-options { display:grid; gap:10px; margin: 4px 0 2px; }
+    .lookup-option { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border-radius:14px; background: rgba(30,41,59,.72); border:1px solid rgba(148,163,184,.16); }
+    .lookup-option-title { font-weight:700; }
+    .lookup-option-meta { color: var(--muted); font-size:.9rem; margin-top:4px; }
     @media (max-width: 980px) {
       .col-8, .col-6, .col-4, .col-3 { grid-column: span 12; }
       .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
@@ -423,14 +427,63 @@
       saveUsers(users);
     }
 
-    async function checkOmdb(title, type) {
+    async function searchOmdb(title, type) {
       const { omdbApiKey } = await getSettings();
       if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
-      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&t=${encodeURIComponent(title)}${type && type !== 'any' ? `&type=${encodeURIComponent(type)}` : ''}`;
+      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&s=${encodeURIComponent(title)}${type && type !== 'any' ? `&type=${encodeURIComponent(type)}` : ''}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.Response === 'False') throw new Error(data.Error || 'Fant ikke tittel.');
+      return data.Search || [];
+    }
+
+    async function getOmdbById(imdbID) {
+      const { omdbApiKey } = await getSettings();
+      if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
+      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&i=${encodeURIComponent(imdbID)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.Response === 'False') throw new Error(data.Error || 'Kunne ikke hente valgt tittel.');
       return data;
+    }
+
+    function fillOmdbFields(data) {
+      const titleEl = document.getElementById('title');
+      const yearEl = document.getElementById('year');
+      const imdbEl = document.getElementById('imdbID');
+      const posterEl = document.getElementById('poster');
+      const typeEl = document.getElementById('type');
+      const msg = document.getElementById('requestMsg');
+      const choices = document.getElementById('lookupChoices');
+      if (titleEl && data.Title) titleEl.value = data.Title;
+      if (yearEl) yearEl.value = data.Year || '';
+      if (imdbEl) imdbEl.value = data.imdbID || '';
+      if (posterEl) posterEl.value = data.Poster && data.Poster !== 'N/A' ? data.Poster : '';
+      if (typeEl && data.Type && ['movie','series'].includes(data.Type)) typeEl.value = data.Type;
+      if (choices) choices.innerHTML = '';
+      if (msg) {
+        msg.textContent = `Valgt: ${data.Title} (${data.Year || 'ukjent år'})`;
+        msg.style.color = '#86efac';
+      }
+    }
+
+    function renderOmdbChoices(results) {
+      const choices = document.getElementById('lookupChoices');
+      if (!choices) return;
+      choices.innerHTML = `
+        <div class="notice info">Flere treff funnet. Velg riktig tittel:</div>
+        <div class="lookup-options">
+          ${results.map(item => `
+            <div class="lookup-option">
+              <div>
+                <div class="lookup-option-title">${escapeHtml(item.Title || '')}</div>
+                <div class="lookup-option-meta">${escapeHtml(item.Year || 'Ukjent år')} · ${item.Type === 'series' ? 'Serie' : 'Film'} · ${escapeHtml(item.imdbID || '')}</div>
+              </div>
+              <button type="button" class="btn-secondary" style="width:auto;" onclick="chooseOmdbResult('${item.imdbID}')">Velg</button>
+            </div>
+          `).join('')}
+        </div>
+      `;
     }
 
     async function createRequest(payload) {
@@ -700,6 +753,7 @@
                   <div class="btn-row">
                     <button type="button" class="btn-secondary" onclick="lookupTitle()">Sjekk mot IMDb-data</button>
                   </div>
+                  <div id="lookupChoices"></div>
                   <div class="row">
                     <div class="field half">
                       <label for="year">Utgivelsesår</label>
@@ -841,6 +895,7 @@
           document.getElementById('requestMsg').textContent = 'Ønsket er lagret.';
           document.getElementById('requestMsg').style.color = '#86efac';
           requestForm.reset();
+          const choices = document.getElementById('lookupChoices'); if (choices) choices.innerHTML = '';
           await render();
           setTimeout(async () => { state.view = 'requests'; await render(); }, 450);
         });
@@ -908,27 +963,59 @@
         alert(err.message || 'Kunne ikke slette ønsket.');
       }
     };
+
+    window.chooseOmdbResult = async (imdbID) => {
+      const msg = document.getElementById('requestMsg');
+      if (msg) {
+        msg.textContent = 'Henter valgt tittel ...';
+        msg.style.color = '#93c5fd';
+      }
+      try {
+        const data = await getOmdbById(imdbID);
+        fillOmdbFields(data);
+      } catch (err) {
+        if (msg) {
+          msg.textContent = err.message;
+          msg.style.color = '#fca5a5';
+        }
+      }
+    };
+
     window.lookupTitle = async () => {
       const title = document.getElementById('title')?.value.trim();
       const type = document.getElementById('type')?.value;
       const msg = document.getElementById('requestMsg');
+      const choices = document.getElementById('lookupChoices');
       if (!title) {
-        msg.textContent = 'Skriv inn en tittel først.';
-        msg.style.color = '#fca5a5';
+        if (msg) {
+          msg.textContent = 'Skriv inn en tittel først.';
+          msg.style.color = '#fca5a5';
+        }
+        if (choices) choices.innerHTML = '';
         return;
       }
-      msg.textContent = 'Søker ...';
-      msg.style.color = '#93c5fd';
+      if (msg) {
+        msg.textContent = 'Søker ...';
+        msg.style.color = '#93c5fd';
+      }
+      if (choices) choices.innerHTML = '';
       try {
-        const data = await checkOmdb(title, type);
-        document.getElementById('year').value = data.Year || '';
-        document.getElementById('imdbID').value = data.imdbID || '';
-        document.getElementById('poster').value = data.Poster && data.Poster !== 'N/A' ? data.Poster : '';
-        msg.textContent = `Fant treff: ${data.Title} (${data.Year || 'ukjent år'})`;
-        msg.style.color = '#86efac';
+        const results = await searchOmdb(title, type);
+        if (results.length === 1) {
+          const data = await getOmdbById(results[0].imdbID);
+          fillOmdbFields(data);
+          return;
+        }
+        renderOmdbChoices(results);
+        if (msg) {
+          msg.textContent = `Fant ${results.length} treff. Velg riktig tittel under.`;
+          msg.style.color = '#93c5fd';
+        }
       } catch (err) {
-        msg.textContent = err.message;
-        msg.style.color = '#fca5a5';
+        if (msg) {
+          msg.textContent = err.message;
+          msg.style.color = '#fca5a5';
+        }
       }
     };
 
