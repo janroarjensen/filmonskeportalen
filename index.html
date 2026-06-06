@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Filmønskeportal</title>
+  <title>Filmønskeportal 2026</title>
   <style>
     :root{
       --bg:#0f172a;
@@ -246,6 +246,7 @@
       console.error('Firebase init-feil', err);
     }
   </script>
+
   <script>
     const STORAGE = {
       users: 'filmportal_users_v1',
@@ -401,7 +402,6 @@
       filterStatus: 'all'
     };
 
-
     async function login(username, password) {
       const user = getUsers().find(u => u.username === username && u.password === password);
       if (!user) return false;
@@ -462,6 +462,15 @@
       await window.firebaseDb.ref(`requests/${id}`).update(patch);
     }
 
+    async function deleteRequest(id) {
+      if (!window.firebaseDb) {
+        const requests = await getRequests();
+        await saveRequests(requests.filter(r => r.id !== id));
+        return;
+      }
+      await window.firebaseDb.ref(`requests/${id}`).remove();
+    }
+
     function deleteUser(id) {
       const session = getSession();
       const users = getUsers();
@@ -515,23 +524,19 @@
       if (r.year) chips.push(`<span class="chip dark">Utgitt: ${escapeHtml(r.year)}</span>`);
       return `
         <div class="item">
-          <img class="poster" src="${getPoster(r.poster)}" alt="Plakat for ${escapeHtml(r.title)}" onerror="this.src='${getPoster('')}'" />
-          <div>
-            <div class="toolbar" style="margin-bottom:6px;">
-              <div>
-                <h3 style="margin:0;">${escapeHtml(r.title)}</h3>
+          <img class="poster" src="${getPoster(r.poster)}" alt="Plakat for ${escapeHtml(r.title)}" onerror="this.src='${getPoster('')}'"          <h3 style="margin:0;">${escapeHtml(r.title)}</h3>
                 <div class="small muted">Lagt inn av <strong>${escapeHtml(r.requestedByName || r.requestedBy)}</strong> · ${fmtDate(r.requestedAt)}</div>
               </div>
               ${isAdmin ? `
                 <div class="btn-row">
                   <button class="${r.downloaded ? 'btn-secondary' : 'btn-ok'}" onclick="toggleDownloaded('${r.id}')">${r.downloaded ? 'Angre lastet ned' : 'Marker som lastet ned'}</button>
                   ${!r.adminSeen ? `<button class="btn-ghost" onclick="markSeen('${r.id}')">Marker som lest</button>` : ''}
+                  <button class="btn-danger" onclick="removeRequest('${r.id}')">Slett</button>
                 </div>
               ` : ''}
             </div>
             <div class="meta">${chips.join('')}</div>
-            ${r.imdbID ? `<div class="small"><a href="https://www.imdb.com/title/${encodeURIComponent(r.imdbID)}/" target="_blank" rel="noopener">Åpne på IMDb</a></div>` : ''}
-            ${r.note ? `<p style="margin:10px 0 0;">${escapeHtml(r.note)}</p>` : ''}
+            ${r.imdbID ? `<div class="small"><a href="https://www.imdb.com/title/${encodeURIComponent(r.imdbID)}/" target="_blank" rel="noopener  ${r.note ? `<p style="margin:10px 0 0;">${escapeHtml(r.note)}</p>` : ''}
           </div>
         </div>
       `;
@@ -814,7 +819,6 @@
         </div>
       `;
 
-      // bind forms after render
       const requestForm = document.getElementById('requestForm');
       if (requestForm) {
         requestForm.addEventListener('submit', async (e) => {
@@ -878,17 +882,44 @@
     window.setFilterText = async (val) => { state.filterText = val; await render(); };
     window.setFilterType = async (val) => { state.filterType = val; await render(); };
     window.setFilterStatus = async (val) => { state.filterStatus = val; await render(); };
+
     window.toggleDownloaded = async (id) => {
-      const r = (await getRequests()).find(x => x.id === id); if (!r) return;
+      const r = (await getRequests()).find(x => x.id === id);
+      if (!r) return;
       await updateRequest(id, { downloaded: !r.downloaded, status: !r.downloaded ? 'downloaded' : 'new' });
       await render();
     };
-    window.markSeen = async (id) => { await updateRequest(id, { adminSeen: true }); await render(); };
-    window.markAllSeen = async () => { await markAdminSeenAll(); await render(); };
+
+    window.markSeen = async (id) => {
+      await updateRequest(id, { adminSeen: true });
+      await render();
+    };
+
+    window.markAllSeen = async () => {
+      await markAdminSeenAll();
+      await render();
+    };
+
     window.removeUser = (id) => {
       if (!confirm('Slette bruker?')) return;
-      try { deleteUser(id); render(); } catch (err) { alert(err.message); }
+      try {
+        deleteUser(id);
+        render();
+      } catch (err) {
+        alert(err.message);
+      }
     };
+
+    window.removeRequest = async (id) => {
+      if (!confirm('Slette dette ønsket?')) return;
+      try {
+        await deleteRequest(id);
+        await render();
+      } catch (err) {
+        alert(err.message || 'Kunne ikke slette ønsket.');
+      }
+    };
+
     window.lookupTitle = async () => {
       const title = document.getElementById('title')?.value.trim();
       const type = document.getElementById('type')?.value;
