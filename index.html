@@ -452,13 +452,14 @@
       }
       await window.firebaseDb.ref('requests').push(request);
     }
-
     async function updateRequest(id, patch) {
       if (!window.firebaseDb) {
         const requests = (await getRequests()).map(r => r.id === id ? { ...r, ...patch } : r);
         await saveRequests(requests);
         return;
       }
+      await window.firebaseDb.ref(`requests/${id}`).update(patch);
+    }
 
     async function deleteRequest(id) {
       if (!window.firebaseDb) {
@@ -467,8 +468,6 @@
         return;
       }
       await window.firebaseDb.ref(`requests/${id}`).remove();
-    }
-      await window.firebaseDb.ref(`requests/${id}`).update(patch);
     }
 
     function deleteUser(id) {
