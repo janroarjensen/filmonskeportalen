@@ -90,6 +90,7 @@
     }
     .stat .label { color: var(--muted); font-size: .9rem; }
     .stat .value { font-size: 1.6rem; font-weight: 700; margin-top: 8px; }
+    .stat .hint { color: var(--muted); font-size: .82rem; margin-top: 6px; }
     form { display:grid; gap:12px; }
     .row { display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; }
     .field { grid-column: span 12; }
@@ -113,7 +114,9 @@
     }
     button:hover { opacity: .95; }
     button:active { transform: translateY(1px); }
+    button[disabled] { opacity:.55; cursor:not-allowed; }
     .btn-row { display:flex; gap:10px; flex-wrap:wrap; }
+    .btn-row > * { width:auto; }
     .btn-secondary { background: #334155; }
     .btn-ghost { background: transparent; border:1px solid rgba(148,163,184,.25); }
     .btn-ok { background: var(--ok); }
@@ -146,6 +149,7 @@
     .chip.dark { background:#334155; color:#e2e8f0; }
     .chip.new { background:#fef3c7; color:#92400e; }
     .chip.done { background:#dcfce7; color:#166534; }
+    .chip.vote { background:#dbeafe; color:#1d4ed8; }
     .muted { color: var(--muted); }
     .small { font-size: .9rem; }
     .hidden { display:none !important; }
@@ -156,9 +160,6 @@
     .notice.info { background: rgba(37,99,235,.14); border-color: rgba(96,165,250,.24); }
     .notice.ok { background: rgba(22,163,74,.14); border-color: rgba(74,222,128,.22); }
     .notice.warn { background: rgba(245,158,11,.14); border-color: rgba(251,191,36,.2); }
-    .search-choice-list { display:grid; gap:10px; margin-top:12px; }
-    .search-choice { background: rgba(30,41,59,.75); border:1px solid rgba(148,163,184,.16); border-radius:14px; padding:12px; display:flex; justify-content:space-between; gap:12px; align-items:center; }
-    .search-choice button { width:auto; padding:10px 14px; }
     nav.tabs {
       display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px;
     }
@@ -187,9 +188,14 @@
     .footer-note {
       margin-top: 16px; color: var(--muted); font-size: .9rem;
     }
+    .comment-box {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(37,99,235,.12);
+      border: 1px solid rgba(96,165,250,.2);
+    }
     .right { text-align:right; }
-    .linklike { background: transparent; color:#93c5fd; padding: 0; border:none; width:auto; }
-    .pw-help { color: var(--muted); font-size: .88rem; margin-top: 4px; }
     @media (max-width: 980px) {
       .col-8, .col-6, .col-4, .col-3 { grid-column: span 12; }
       .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
@@ -200,12 +206,13 @@
       .field.half, .field.third, .field.two-thirds { grid-column: span 12; }
       .stats { grid-template-columns: 1fr; }
       .toolbar .filters input, .toolbar .filters select { width: 100%; min-width: 0; }
+      .btn-row { flex-direction: column; }
+      .btn-row > * { width: 100%; }
     }
   </style>
 </head>
 <body>
   <div id="app"></div>
-
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script>
@@ -218,14 +225,12 @@
       messagingSenderId: "151608748582",
       appId: "1:151608748582:web:af434abef55190b959d4e7"
     };
-
     window.firebaseApp = null;
     window.firebaseDb = null;
     window.firebaseConnected = false;
     window.firebaseDbConnected = false;
     window.firebaseStatusText = 'Firebase ikke koblet til';
     window.firebaseConfig = firebaseConfig;
-
     try {
       window.firebaseApp = firebase.initializeApp(firebaseConfig);
       window.firebaseDb = firebase.database();
@@ -253,7 +258,7 @@
   <script>
     const STORAGE = {
       users: 'filmportal_users_v1',
-      requests: 'filmportal_requests_v1',
+      requests: 'filmportal_requests_v2',
       session: 'filmportal_session_v1',
       settings: 'filmportal_settings_v1'
     };
@@ -283,7 +288,10 @@
               note: 'Gjerne i best mulig kvalitet',
               status: 'new',
               downloaded: false,
-              adminSeen: false
+              adminSeen: false,
+              adminComment: '',
+              voters: ['bruker1'],
+              voterNames: ['Bruker 1']
             }
           ]));
         }
@@ -309,7 +317,10 @@
             note: 'Gjerne i best mulig kvalitet',
             status: 'new',
             downloaded: false,
-            adminSeen: false
+            adminSeen: false,
+            adminComment: '',
+            voters: ['bruker1'],
+            voterNames: ['Bruker 1']
           });
         }
         const settingsSnap = await window.firebaseDb.ref('settings').once('value');
@@ -323,14 +334,66 @@
 
     const getUsers = () => JSON.parse(localStorage.getItem(STORAGE.users) || '[]');
     const saveUsers = (users) => localStorage.setItem(STORAGE.users, JSON.stringify(users));
+    const getSession = () => JSON.parse(localStorage.getItem(STORAGE.session) || 'null');
+    const saveSession = (session) => localStorage.setItem(STORAGE.session, JSON.stringify(session));
+    const escapeHtml = (s='') => String(s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+    const fmtDate = (iso) => {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleString('no-NO'); } catch { return iso; }
+    };
+    const normalizeText = (s='') => String(s).trim().toLowerCase().replace(/\s+/g, ' ');
+    const unique = (arr=[]) => [...new Set((arr || []).filter(Boolean))];
+
+    function getFirebaseStatus() {
+      if (window.firebaseStatusText && String(window.firebaseStatusText).startsWith('RTDB-feil:')) {
+        return { text: window.firebaseStatusText, dotClass: 'off' };
+      }
+      if (window.firebaseStatusText && String(window.firebaseStatusText).startsWith('Firebase-feil:')) {
+        return { text: window.firebaseStatusText, dotClass: 'off' };
+      }
+      if (window.firebaseConnected === true && window.firebaseDbConnected === true) {
+        return { text: window.firebaseStatusText || 'Firebase tilkoblet · Realtime Database tilkoblet', dotClass: '' };
+      }
+      if (window.firebaseConnected === true) {
+        return { text: window.firebaseStatusText || 'Firebase tilkoblet · Realtime Database frakoblet', dotClass: 'warn' };
+      }
+      if (window.firebaseConfig) {
+        return { text: window.firebaseStatusText || 'Firebase konfigurert', dotClass: 'warn' };
+      }
+      return { text: 'Firebase ikke koblet til', dotClass: 'off' };
+    }
+
+    function ensureRequestShape(r) {
+      const voters = unique((Array.isArray(r.voters) ? r.voters : []).concat(r.requestedBy ? [r.requestedBy] : []));
+      let voterNames = Array.isArray(r.voterNames) ? r.voterNames.filter(Boolean) : [];
+      if (r.requestedByName && !voterNames.includes(r.requestedByName)) voterNames.unshift(r.requestedByName);
+      voterNames = unique(voterNames);
+      return {
+        status: 'new',
+        downloaded: false,
+        adminSeen: false,
+        adminComment: '',
+        voters,
+        voterNames,
+        ...r,
+        voters,
+        voterNames,
+        voteCount: voters.length || 0
+      };
+    }
 
     async function getRequests() {
       if (!window.firebaseDb) {
-        return JSON.parse(localStorage.getItem(STORAGE.requests) || '[]');
+        return JSON.parse(localStorage.getItem(STORAGE.requests) || '[]').map(ensureRequestShape);
       }
       const snapshot = await window.firebaseDb.ref('requests').once('value');
       const data = snapshot.val() || {};
-      return Object.entries(data).map(([id, value]) => ({ id, ...value }));
+      return Object.entries(data).map(([id, value]) => ensureRequestShape({ id, ...value }));
     }
 
     async function saveRequests(requests) {
@@ -340,9 +403,11 @@
       }
       const mapped = {};
       for (const item of requests) {
-        const copy = { ...item };
+        const normalized = ensureRequestShape(item);
+        const copy = { ...normalized };
         const id = copy.id || crypto.randomUUID();
         delete copy.id;
+        delete copy.voteCount;
         mapped[id] = copy;
       }
       await window.firebaseDb.ref('requests').set(mapped);
@@ -364,163 +429,106 @@
       await window.firebaseDb.ref('settings').set(settings);
     }
 
-    const getSession = () => JSON.parse(localStorage.getItem(STORAGE.session) || 'null');
-    const saveSession = (session) => localStorage.setItem(STORAGE.session, JSON.stringify(session));
-
-    const escapeHtml = (s='') => String(s)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
-
-    const fmtDate = (iso) => {
-      if (!iso) return '—';
-      try { return new Date(iso).toLocaleString('no-NO'); } catch { return iso; }
-    };
-
-    function getFirebaseStatus() {
-      if (window.firebaseStatusText && String(window.firebaseStatusText).startsWith('RTDB-feil:')) {
-        return { text: window.firebaseStatusText, dotClass: 'off' };
-      }
-      if (window.firebaseStatusText && String(window.firebaseStatusText).startsWith('Firebase-feil:')) {
-        return { text: window.firebaseStatusText, dotClass: 'off' };
-      }
-      if (window.firebaseConnected === true && window.firebaseDbConnected === true) {
-        return { text: window.firebaseStatusText || 'Firebase tilkoblet · Realtime Database tilkoblet', dotClass: '' };
-      }
-      if (window.firebaseConnected === true) {
-        return { text: window.firebaseStatusText || 'Firebase tilkoblet · Realtime Database frakoblet', dotClass: 'warn' };
-      }
-      if (window.firebaseConfig) {
-        return { text: window.firebaseStatusText || 'Firebase konfigurert', dotClass: 'warn' };
-      }
-      return { text: 'Firebase ikke koblet til', dotClass: 'off' };
-    }
-
-    function generateSalt() {
-      const bytes = crypto.getRandomValues(new Uint8Array(16));
-      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-    async function hashPassword(password, salt) {
-      const data = new TextEncoder().encode(`${String(password || '')}:${String(salt || '')}`);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-    async function verifyPassword(password, storedHash, salt) {
-      const hash = await hashPassword(password, salt);
-      return hash === storedHash;
-    }
-    async function migrateUsersToPasswordHash() {
-      const users = getUsers();
-      let changed = false;
-      for (const user of users) {
-        if (!user.passwordHash) {
-          const salt = generateSalt();
-          user.passwordSalt = salt;
-          user.passwordHash = await hashPassword(user.password || '', salt);
-          delete user.password;
-          changed = true;
-        }
-      }
-      if (changed) saveUsers(users);
-    }
-    async function changeCurrentUserPassword(currentPassword, newPassword) {
-      const session = getSession();
-      if (!session) throw new Error('Du må være logget inn.');
-      const users = getUsers();
-      const idx = users.findIndex(u => u.id === session.id || u.username === session.username);
-      if (idx === -1) throw new Error('Fant ikke bruker.');
-      const user = users[idx];
-      const ok = await verifyPassword(currentPassword, user.passwordHash || '', user.passwordSalt || '');
-      if (!ok) throw new Error('Nåværende passord er feil.');
-      const newSalt = generateSalt();
-      users[idx].passwordSalt = newSalt;
-      users[idx].passwordHash = await hashPassword(newPassword, newSalt);
-      delete users[idx].password;
-      saveUsers(users);
-    }
     let state = {
       view: 'dashboard',
       filterText: '',
       filterType: 'all',
-      filterStatus: 'all'
+      filterStatus: 'all',
+      filterSort: 'newest'
     };
+
     async function login(username, password) {
-      const user = getUsers().find(u => u.username === username);
+      const user = getUsers().find(u => u.username === username && u.password === password);
       if (!user) return false;
-      const ok = await verifyPassword(password, user.passwordHash || '', user.passwordSalt || '');
-      if (!ok) return false;
       saveSession({ id: user.id, username: user.username, role: user.role, displayName: user.displayName });
       return true;
     }
+
     function logout() {
       localStorage.removeItem(STORAGE.session);
       render();
     }
-    async function createUser({ username, password, displayName, role }) {
+
+    function createUser({ username, password, displayName, role }) {
       const users = getUsers();
       if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
         throw new Error('Brukernavnet finnes allerede.');
       }
-      const passwordSalt = generateSalt();
-      const passwordHash = await hashPassword(password, passwordSalt);
-      users.push({ id: crypto.randomUUID(), username, passwordHash, passwordSalt, displayName, role, createdAt: new Date().toISOString() });
+      users.push({ id: crypto.randomUUID(), username, password, displayName, role, createdAt: new Date().toISOString() });
       saveUsers(users);
     }
-    async function searchOmdb(title, type) {
+
+    async function checkOmdb(title, type) {
       const { omdbApiKey } = await getSettings();
       if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
-      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&s=${encodeURIComponent(title)}${type && type !== 'any' ? `&type=${encodeURIComponent(type)}` : ''}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.Response === 'False') throw new Error(data.Error || 'Fant ikke tittel.');
-      return data.Search || [];
-    }
-    async function getOmdbById(imdbID) {
-      const { omdbApiKey } = await getSettings();
-      if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
-      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&i=${encodeURIComponent(imdbID)}&plot=short`;
+      const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&t=${encodeURIComponent(title)}${type && type !== 'any' ? `&type=${encodeURIComponent(type)}` : ''}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.Response === 'False') throw new Error(data.Error || 'Fant ikke tittel.');
       return data;
     }
-    function fillOmdbFields(data) {
-      document.getElementById('title').value = data.Title || document.getElementById('title').value;
-      document.getElementById('year').value = data.Year || '';
-      document.getElementById('imdbID').value = data.imdbID || '';
-      document.getElementById('poster').value = data.Poster && data.Poster !== 'N/A' ? data.Poster : '';
+
+    function findDuplicateRequest(requests, payload) {
+      const imdb = normalizeText(payload.imdbID || '');
+      const title = normalizeText(payload.title || '');
+      const type = normalizeText(payload.type || '');
+      return requests.find(r => {
+        const sameImdb = imdb && normalizeText(r.imdbID || '') && normalizeText(r.imdbID || '') === imdb;
+        const sameTitle = !imdb && normalizeText(r.title || '') === title && normalizeText(r.type || '') === type;
+        return sameImdb || sameTitle;
+      });
     }
 
     async function createRequest(payload) {
       const session = getSession();
-      const request = {
+      const requests = await getRequests();
+      const duplicate = findDuplicateRequest(requests, payload);
+      if (duplicate) {
+        if ((duplicate.voters || []).includes(session.username)) {
+          return { mode: 'duplicate-already-voted', item: duplicate };
+        }
+        await voteForRequest(duplicate.id);
+        return { mode: 'duplicate-voted', item: duplicate };
+      }
+
+      const request = ensureRequestShape({
         requestedBy: session.username,
         requestedByName: session.displayName || session.username,
         requestedAt: new Date().toISOString(),
         status: 'new',
         downloaded: false,
         adminSeen: false,
+        adminComment: '',
+        voters: [session.username],
+        voterNames: [session.displayName || session.username],
         ...payload
-      };
+      });
+
       if (!window.firebaseDb) {
-        const requests = await getRequests();
         requests.unshift({ id: crypto.randomUUID(), ...request });
         await saveRequests(requests);
-        return;
+        return { mode: 'created' };
       }
-      await window.firebaseDb.ref('requests').push(request);
+      const ref = await window.firebaseDb.ref('requests').push();
+      const saveData = { ...request };
+      delete saveData.id;
+      delete saveData.voteCount;
+      await ref.set(saveData);
+      return { mode: 'created' };
     }
 
     async function updateRequest(id, patch) {
       if (!window.firebaseDb) {
-        const requests = (await getRequests()).map(r => r.id === id ? { ...r, ...patch } : r);
+        const requests = (await getRequests()).map(r => r.id === id ? ensureRequestShape({ ...r, ...patch }) : ensureRequestShape(r));
         await saveRequests(requests);
         return;
       }
-      await window.firebaseDb.ref(`requests/${id}`).update(patch);
+      const cleanPatch = { ...patch };
+      delete cleanPatch.id;
+      delete cleanPatch.voteCount;
+      await window.firebaseDb.ref(`requests/${id}`).update(cleanPatch);
     }
+
     async function deleteRequest(id) {
       if (!window.firebaseDb) {
         const requests = await getRequests();
@@ -529,6 +537,17 @@
       }
       await window.firebaseDb.ref(`requests/${id}`).remove();
     }
+
+    async function voteForRequest(id) {
+      const session = getSession();
+      const requests = await getRequests();
+      const item = requests.find(r => r.id === id);
+      if (!item) throw new Error('Fant ikke ønsket.');
+      const voters = unique((item.voters || []).concat([session.username]));
+      const voterNames = unique((item.voterNames || []).concat([session.displayName || session.username]));
+      await updateRequest(id, { voters, voterNames });
+    }
+
     function deleteUser(id) {
       const session = getSession();
       const users = getUsers();
@@ -542,7 +561,7 @@
     async function markAdminSeenAll() {
       const requests = await getRequests();
       if (!window.firebaseDb) {
-        await saveRequests(requests.map(r => ({ ...r, adminSeen: true })));
+        await saveRequests(requests.map(r => ensureRequestShape({ ...r, adminSeen: true })));
         return;
       }
       const updates = {};
@@ -550,15 +569,36 @@
       await window.firebaseDb.ref('requests').update(updates);
     }
 
-    function matchRequest(r) {
+    function matchesFilter(r) {
       const text = state.filterText.trim().toLowerCase();
       const typeOk = state.filterType === 'all' || r.type === state.filterType;
       const statusOk = state.filterStatus === 'all'
         || (state.filterStatus === 'downloaded' && r.downloaded)
         || (state.filterStatus === 'wanted' && !r.downloaded)
         || (state.filterStatus === 'new' && !r.adminSeen);
-      const textOk = !text || [r.title, r.requestedBy, r.requestedByName, r.year, r.note].filter(Boolean).join(' ').toLowerCase().includes(text);
+      const haystack = [r.title, r.requestedBy, r.requestedByName, r.year, r.note, r.adminComment, ...(r.voterNames || [])]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      const textOk = !text || haystack.includes(text);
       return typeOk && statusOk && textOk;
+    }
+
+    function applySort(items) {
+      const list = [...items];
+      switch (state.filterSort) {
+        case 'oldest':
+          return list.sort((a, b) => new Date(a.requestedAt || 0) - new Date(b.requestedAt || 0));
+        case 'title':
+          return list.sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'no'));
+        case 'mostVoted':
+          return list.sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0) || new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+        case 'notDownloaded':
+          return list.sort((a, b) => Number(a.downloaded) - Number(b.downloaded) || new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+        case 'newest':
+        default:
+          return list.sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+      }
     }
 
     function getPoster(url) {
@@ -574,12 +614,26 @@
       return url;
     }
 
-    function requestCard(r, isAdmin) {
+    function requestCard(r, isAdmin, session, options = {}) {
+      const showAdminButtons = isAdmin;
+      const canVote = session && !(r.voters || []).includes(session.username);
       const chips = [];
       chips.push(`<span class="chip ${r.downloaded ? 'done' : 'dark'}">${r.downloaded ? 'Lastet ned' : 'Ikke lastet ned'}</span>`);
       chips.push(`<span class="chip dark">${r.type === 'series' ? 'Serie' : 'Film'}</span>`);
+      chips.push(`<span class="chip vote">Ønsker: ${r.voteCount || 0}</span>`);
       if (!r.adminSeen) chips.push('<span class="chip new">Nytt ønske</span>');
       if (r.year) chips.push(`<span class="chip dark">Utgitt: ${escapeHtml(r.year)}</span>`);
+      const whoVotes = (r.voterNames && r.voterNames.length)
+        ? `<div class="small muted">Ønskes av: ${escapeHtml(r.voterNames.join(', '))}</div>`
+        : '';
+      const adminComment = r.adminComment
+        ? `<div class="comment-box"><strong>Admin-kommentar</strong><div style="margin-top:6px;">${escapeHtml(r.adminComment)}</div></div>`
+        : '';
+      const voteBtn = options.hideVote ? '' : `
+        <button class="btn-ghost" ${canVote ? '' : 'disabled'} onclick="voteRequest('${r.id}')">
+          ${canVote ? 'Jeg vil også ha denne' : 'Du ønsker også denne'}
+        </button>
+      `;
       return `
         <div class="item">
           <img class="poster" src="${getPoster(r.poster)}" alt="Plakat for ${escapeHtml(r.title)}" onerror="this.src='${getPoster('')}'" />
@@ -589,17 +643,19 @@
                 <h3 style="margin:0;">${escapeHtml(r.title)}</h3>
                 <div class="small muted">Lagt inn av <strong>${escapeHtml(r.requestedByName || r.requestedBy)}</strong> · ${fmtDate(r.requestedAt)}</div>
               </div>
-              ${isAdmin ? `
-                <div class="btn-row">
-                  <button class="${r.downloaded ? 'btn-secondary' : 'btn-ok'}" onclick="toggleDownloaded('${r.id}')">${r.downloaded ? 'Angre lastet ned' : 'Marker som lastet ned'}</button>
-                  ${!r.adminSeen ? `<button class="btn-ghost" onclick="markSeen('${r.id}')">Marker som lest</button>` : ''}
-                  <button class="btn-danger" onclick="removeRequest('${r.id}')">Slett</button>
-                </div>
-              ` : ''}
+              <div class="btn-row">
+                ${showAdminButtons ? `<button class="${r.downloaded ? 'btn-secondary' : 'btn-ok'}" onclick="toggleDownloaded('${r.id}')">${r.downloaded ? 'Angre lastet ned' : 'Marker som lastet ned'}</button>` : ''}
+                ${showAdminButtons && !r.adminSeen ? `<button class="btn-ghost" onclick="markSeen('${r.id}')">Marker som lest</button>` : ''}
+                ${showAdminButtons ? `<button class="btn-secondary" onclick="editAdminComment('${r.id}')">${r.adminComment ? 'Rediger kommentar' : 'Legg til kommentar'}</button>` : ''}
+                ${voteBtn}
+                ${showAdminButtons ? `<button class="btn-danger" onclick="removeRequest('${r.id}')">Slett</button>` : ''}
+              </div>
             </div>
             <div class="meta">${chips.join('')}</div>
-            ${r.imdbID ? `<div class="small"><a href="https://www.imdb.com/title/${encodeURIComponent(r.imdbID)}/" target="_blank" rel="noopener">Åpne på IMDb</a></div>` : ''}
+            ${whoVotes}
+            ${r.imdbID ? `<div class="small" style="margin-top:8px;"><a href="https://www.imdb.com/title/${encodeURIComponent(r.imdbID)}/" target="_blank" rel="noopener">Åpne på IMDb</a></div>` : ''}
             ${r.note ? `<p style="margin:10px 0 0;">${escapeHtml(r.note)}</p>` : ''}
+            ${adminComment}
           </div>
         </div>
       `;
@@ -611,7 +667,6 @@
           <div class="login-card">
             <h1 style="margin-top:0;">Filmønskeportal</h1>
             <p class="muted">Mobilvennlig portal for film- og serieønsker.</p>
-            
             <form id="loginForm">
               <div>
                 <label for="loginUsername">Brukernavn</label>
@@ -624,7 +679,7 @@
               <button type="submit">Logg inn</button>
             </form>
             <div class="footer-note"><span class="badge"><span class="dot ${getFirebaseStatus().dotClass}"></span>${getFirebaseStatus().text}</span></div>
-            <div id="loginMsg" class="footer-note">Tips: Legg inn OMDb API-nøkkel etter innlogging for automatisk sjekk mot IMDb-data. Passord lagres nå som hash med salt.</div>
+            <div id="loginMsg" class="footer-note">Tips: Legg inn OMDb API-nøkkel etter innlogging for automatisk sjekk mot IMDb-data.</div>
           </div>
         </div>
       `;
@@ -645,21 +700,25 @@
       const session = getSession();
       const isAdmin = session.role === 'admin';
       const users = getUsers();
-      const requests = await getRequests();
+      const requests = (await getRequests()).map(ensureRequestShape);
       const settings = await getSettings();
       const firebaseStatus = getFirebaseStatus();
       const newCount = requests.filter(r => !r.adminSeen).length;
       const downloadedCount = requests.filter(r => r.downloaded).length;
       const wantedCount = requests.filter(r => !r.downloaded).length;
       const usersCount = users.filter(u => u.role === 'user').length;
-      const filtered = requests.filter(matchRequest);
+      const filtered = applySort(requests.filter(matchesFilter));
+      const mine = applySort(requests.filter(r => r.requestedBy === session.username));
+      const myDownloaded = mine.filter(r => r.downloaded).length;
+      const myPending = mine.filter(r => !r.downloaded).length;
+      const topWanted = [...requests].sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0)).slice(0, 5);
 
       document.getElementById('app').innerHTML = `
         <div class="container">
           <div class="hero">
             <div>
               <h1>Filmønskeportal</h1>
-              <p>Brukere kan legge inn film- og serieønsker. Admin kan opprette brukere, se hvem som har spurt og markere hva som er lastet ned.</p>
+              <p>Brukere kan legge inn film- og serieønsker. Admin kan opprette brukere, kommentere ønsker og markerer hva som er lastet ned.</p>
             </div>
             <div class="badge"><span class="dot"></span>${isAdmin ? `Nye ønsker: ${newCount}` : `Innlogget som ${escapeHtml(session.displayName || session.username)}`}</div>
           </div>
@@ -668,6 +727,7 @@
             <nav class="tabs">
               <button class="${state.view === 'dashboard' ? 'active' : ''}" onclick="setView('dashboard')">Oversikt</button>
               <button class="${state.view === 'requests' ? 'active' : ''}" onclick="setView('requests')">Ønskeliste</button>
+              <button class="${state.view === 'mine' ? 'active' : ''}" onclick="setView('mine')">Mine ønsker</button>
               <button class="${state.view === 'newRequest' ? 'active' : ''}" onclick="setView('newRequest')">Nytt ønske</button>
               ${isAdmin ? `<button class="${state.view === 'admin' ? 'active' : ''}" onclick="setView('admin')">Admin</button>` : ''}
               <button class="${state.view === 'settings' ? 'active' : ''}" onclick="setView('settings')">Innstillinger</button>
@@ -689,25 +749,29 @@
                   <div class="stat"><div class="label">Brukere</div><div class="value">${usersCount}</div></div>
                 </div>
               </div>
+
               <div class="col-8 card">
                 <div class="toolbar">
                   <h2 style="margin:0;">Siste ønsker</h2>
                   ${isAdmin && newCount ? `<button class="btn-ghost" style="width:auto;" onclick="markAllSeen()">Marker alle som lest</button>` : ''}
                 </div>
                 <div class="list">
-                  ${requests.slice(0,5).map(r => requestCard(r, isAdmin)).join('') || '<div class="muted">Ingen ønsker enda.</div>'}
+                  ${applySort(requests).slice(0,5).map(r => requestCard(r, isAdmin, session)).join('') || '<div class="muted">Ingen ønsker enda.</div>'}
                 </div>
               </div>
+
               <div class="col-4 card">
-                <h2>Varsling</h2>
-                <div class="notice info">
-                  <strong>Anbefalt løsning:</strong> Start med <strong>e-post</strong> for adminvarsler. Det er billigere, enklere og fint for nye ønsker. SMS passer best hvis det er kritisk at admin får beskjed umiddelbart, men det koster mer og krever ekstern SMS-tjeneste.
+                <h2>Mest ønsket</h2>
+                <div class="list">
+                  ${topWanted.map(r => `
+                    <div class="item" style="grid-template-columns:1fr;">
+                      <div>
+                        <strong>${escapeHtml(r.title)}</strong>
+                        <div class="small muted">${r.type === 'series' ? 'Serie' : 'Film'} · ${r.voteCount || 0} ønsker</div>
+                      </div>
+                    </div>
+                  `).join('') || '<div class="muted">Ingen ønsker enda.</div>'}
                 </div>
-                <ul class="small muted">
-                  <li>I denne HTML-versjonen vises nye ønsker som badge og markering i systemet.</li>
-                  <li>Neste steg kan være e-post via for eksempel EmailJS / webhook / Firebase Cloud Function.</li>
-                  <li>Hvis du vil, kan jeg lage en ekte Firebase-versjon i neste runde.</li>
-                </ul>
               </div>
             </div>
           </div>
@@ -717,10 +781,10 @@
               <div class="toolbar">
                 <div>
                   <h2 style="margin:0;">Ønskeliste</h2>
-                  <div class="muted small">Filtrer på tekst, type og status.</div>
+                  <div class="muted small">Filtrer på tekst, type, status og sortering.</div>
                 </div>
                 <div class="filters">
-                  <input placeholder="Søk etter tittel, bruker eller år" value="${escapeHtml(state.filterText)}" oninput="setFilterText(this.value)" />
+                  <input placeholder="Søk etter tittel, bruker, kommentar eller år" value="${escapeHtml(state.filterText)}" oninput="setFilterText(this.value)" />
                   <select onchange="setFilterType(this.value)">
                     <option value="all" ${state.filterType === 'all' ? 'selected' : ''}>Alle typer</option>
                     <option value="movie" ${state.filterType === 'movie' ? 'selected' : ''}>Film</option>
@@ -732,9 +796,38 @@
                     <option value="downloaded" ${state.filterStatus === 'downloaded' ? 'selected' : ''}>Lastet ned</option>
                     <option value="new" ${state.filterStatus === 'new' ? 'selected' : ''}>Nye</option>
                   </select>
+                  <select onchange="setFilterSort(this.value)">
+                    <option value="newest" ${state.filterSort === 'newest' ? 'selected' : ''}>Nyeste først</option>
+                    <option value="oldest" ${state.filterSort === 'oldest' ? 'selected' : ''}>Eldste først</option>
+                    <option value="title" ${state.filterSort === 'title' ? 'selected' : ''}>Alfabetisk</option>
+                    <option value="mostVoted" ${state.filterSort === 'mostVoted' ? 'selected' : ''}>Mest ønsket</option>
+                    <option value="notDownloaded" ${state.filterSort === 'notDownloaded' ? 'selected' : ''}>Ikke lastet ned først</option>
+                  </select>
                 </div>
               </div>
-              <div class="list">${filtered.map(r => requestCard(r, isAdmin)).join('') || '<div class="muted">Ingen treff.</div>'}</div>
+              <div class="list">${filtered.map(r => requestCard(r, isAdmin, session)).join('') || '<div class="muted">Ingen treff.</div>'}</div>
+            </div>
+          </div>
+
+          <div ${state.view !== 'mine' ? 'class="hidden"' : ''}>
+            <div class="grid">
+              <div class="col-12 card">
+                <div class="stats">
+                  <div class="stat"><div class="label">Mine ønsker</div><div class="value">${mine.length}</div></div>
+                  <div class="stat"><div class="label">Ikke lastet ned</div><div class="value">${myPending}</div></div>
+                  <div class="stat"><div class="label">Lastet ned</div><div class="value">${myDownloaded}</div></div>
+                  <div class="stat"><div class="label">Sum stemmer</div><div class="value">${mine.reduce((sum, r) => sum + (r.voteCount || 0), 0)}</div><div class="hint">Hvor mange som ønsker de samme titlene</div></div>
+                </div>
+              </div>
+              <div class="col-12 card">
+                <div class="toolbar">
+                  <div>
+                    <h2 style="margin:0;">Mine ønsker</h2>
+                    <div class="muted small">Her ser du kun det du selv har lagt inn.</div>
+                  </div>
+                </div>
+                <div class="list">${mine.map(r => requestCard(r, isAdmin, session, { hideVote: false })).join('') || '<div class="muted">Du har ikke lagt inn noen ønsker enda.</div>'}</div>
+              </div>
             </div>
           </div>
 
@@ -780,12 +873,11 @@
                   <button type="submit">Lagre ønske</button>
                 </form>
                 <div id="requestMsg" class="footer-note"></div>
-                <div id="searchChoices" class="search-choice-list hidden"></div>
               </div>
               <div class="col-4 card">
                 <h2>Tips</h2>
                 <div class="notice warn">
-                  IMDb-sjekken bruker <strong>OMDb API</strong> i denne versjonen. Legg inn API-nøkkel under <strong>Innstillinger</strong> for automatisk treff på tittel, år og IMDb-ID.
+                  Hvis tittelen allerede finnes i ønskelista, blir det ikke lagt inn en duplikat. I stedet får ønsket en ekstra stemme fra deg.
                 </div>
                 <ul class="small muted">
                   <li>Brukeren kan fortsatt lagre ønsket selv uten API-nøkkel.</li>
@@ -848,7 +940,6 @@
 
           <div ${state.view !== 'settings' ? 'class="hidden"' : ''}>
             <div class="grid">
-              ${isAdmin ? `
               <div class="col-6 card">
                 <h2>Innstillinger</h2>
                 <div class="notice info" style="margin-top:10px;">Status akkurat nå: <strong>${firebaseStatus.text}</strong></div>
@@ -868,36 +959,15 @@
                 </div>
                 <div id="settingsMsg" class="footer-note"></div>
               </div>
-              ` : ''}
               <div class="col-6 card">
-                <h2>Endre passord</h2>
-                <form id="changePasswordForm">
-                  <div>
-                    <label for="currentPassword">Nåværende passord</label>
-                    <input id="currentPassword" type="password" autocomplete="current-password" required />
-                  </div>
-                  <div>
-                    <label for="newPassword">Nytt passord</label>
-                    <input id="newPassword" type="password" autocomplete="new-password" minlength="6" required />
-                    <div class="pw-help">Minst 6 tegn.</div>
-                  </div>
-                  <div>
-                    <label for="confirmPassword">Bekreft nytt passord</label>
-                    <input id="confirmPassword" type="password" autocomplete="new-password" minlength="6" required />
-                  </div>
-                  <button type="submit">Lagre nytt passord</button>
-                </form>
-                <div id="changePasswordMsg" class="footer-note"></div>
-              </div>
-              <div class="col-6 card">
-                <h2>Om varsling</h2>
-                <div class="notice info">
-                  <strong>Min anbefaling:</strong> bruk <strong>e-post</strong> først. Det er enklest og mest kostnadseffektivt for nye filmønsker. SMS er best hvis du må ha nesten umiddelbar respons, men det krever betaling og integrasjon mot en SMS-leverandør.
+                <h2>Hva er nytt</h2>
+                <div class="notice ok">
+                  Denne versjonen har fått <strong>Mine ønsker</strong>, <strong>admin-kommentar</strong>, <strong>stemme-funksjon</strong> og <strong>sortering</strong>.
                 </div>
                 <ul class="small muted">
-                  <li><strong>E-post:</strong> billig, lett å implementere, passer godt for ønskelister.</li>
-                  <li><strong>SMS:</strong> raskere å oppdage, men dyrere og mer arbeid å sette opp.</li>
-                  <li><strong>I appen:</strong> badge, markering og "nye ønsker" fungerer allerede i denne versjonen.</li>
+                  <li>Brukere kan stemme på eksisterende ønsker.</li>
+                  <li>Duplikater blir nå automatisk slått sammen via stemmer.</li>
+                  <li>Admin kan legge inn kommentar direkte på ønsket.</li>
                 </ul>
               </div>
             </div>
@@ -905,7 +975,6 @@
         </div>
       `;
 
-      // bind forms after render
       const requestForm = document.getElementById('requestForm');
       if (requestForm) {
         requestForm.addEventListener('submit', async (e) => {
@@ -919,9 +988,18 @@
             note: document.getElementById('note').value.trim()
           };
           if (!payload.title) return;
-          await createRequest(payload);
-          document.getElementById('requestMsg').textContent = 'Ønsket er lagret.';
-          document.getElementById('requestMsg').style.color = '#86efac';
+          const result = await createRequest(payload);
+          const msg = document.getElementById('requestMsg');
+          if (result.mode === 'created') {
+            msg.textContent = 'Ønsket er lagret.';
+            msg.style.color = '#86efac';
+          } else if (result.mode === 'duplicate-voted') {
+            msg.textContent = 'Tittelen finnes allerede. Stemmen din ble lagt til på eksisterende ønske.';
+            msg.style.color = '#86efac';
+          } else {
+            msg.textContent = 'Tittelen finnes allerede, og du har allerede stemt på den.';
+            msg.style.color = '#fcd34d';
+          }
           requestForm.reset();
           await render();
           setTimeout(async () => { state.view = 'requests'; await render(); }, 450);
@@ -930,10 +1008,10 @@
 
       const userForm = document.getElementById('userForm');
       if (userForm) {
-        userForm.addEventListener('submit', async (e) => {
+        userForm.addEventListener('submit', (e) => {
           e.preventDefault();
           try {
-            await createUser({
+            createUser({
               displayName: document.getElementById('displayName').value.trim(),
               username: document.getElementById('username').value.trim(),
               password: document.getElementById('password').value,
@@ -963,43 +1041,16 @@
           el.style.color = '#86efac';
         });
       }
-      const changePasswordForm = document.getElementById('changePasswordForm');
-      if (changePasswordForm) {
-        changePasswordForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const currentPassword = document.getElementById('currentPassword').value;
-          const newPassword = document.getElementById('newPassword').value;
-          const confirmPassword = document.getElementById('confirmPassword').value;
-          const el = document.getElementById('changePasswordMsg');
-          if (newPassword.length < 6) {
-            el.textContent = 'Nytt passord må være minst 6 tegn.';
-            el.style.color = '#fca5a5';
-            return;
-          }
-          if (newPassword !== confirmPassword) {
-            el.textContent = 'Nytt passord og bekreftelse er ikke like.';
-            el.style.color = '#fca5a5';
-            return;
-          }
-          try {
-            await changeCurrentUserPassword(currentPassword, newPassword);
-            changePasswordForm.reset();
-            el.textContent = 'Passordet ditt er oppdatert.';
-            el.style.color = '#86efac';
-          } catch (err) {
-            el.textContent = err.message || 'Kunne ikke oppdatere passord.';
-            el.style.color = '#fca5a5';
-          }
-        });
-      }
     }
 
     window.setView = async (view) => { state.view = view; await render(); };
     window.setFilterText = async (val) => { state.filterText = val; await render(); };
     window.setFilterType = async (val) => { state.filterType = val; await render(); };
     window.setFilterStatus = async (val) => { state.filterStatus = val; await render(); };
+    window.setFilterSort = async (val) => { state.filterSort = val; await render(); };
     window.toggleDownloaded = async (id) => {
-      const r = (await getRequests()).find(x => x.id === id); if (!r) return;
+      const r = (await getRequests()).find(x => x.id === id);
+      if (!r) return;
       await updateRequest(id, { downloaded: !r.downloaded, status: !r.downloaded ? 'downloaded' : 'new' });
       await render();
     };
@@ -1009,7 +1060,6 @@
       if (!confirm('Slette bruker?')) return;
       try { deleteUser(id); render(); } catch (err) { alert(err.message); }
     };
-
     window.removeRequest = async (id) => {
       if (!confirm('Slette dette ønsket?')) return;
       try {
@@ -1019,15 +1069,27 @@
         alert(err.message || 'Kunne ikke slette ønsket.');
       }
     };
+    window.voteRequest = async (id) => {
+      try {
+        await voteForRequest(id);
+        await render();
+      } catch (err) {
+        alert(err.message || 'Kunne ikke legge til stemme.');
+      }
+    };
+    window.editAdminComment = async (id) => {
+      const requests = await getRequests();
+      const item = requests.find(r => r.id === id);
+      if (!item) return;
+      const value = prompt('Skriv admin-kommentar:', item.adminComment || '');
+      if (value === null) return;
+      await updateRequest(id, { adminComment: value.trim() });
+      await render();
+    };
     window.lookupTitle = async () => {
       const title = document.getElementById('title')?.value.trim();
       const type = document.getElementById('type')?.value;
       const msg = document.getElementById('requestMsg');
-      const choices = document.getElementById('searchChoices');
-      if (choices) {
-        choices.innerHTML = '';
-        choices.classList.add('hidden');
-      }
       if (!title) {
         msg.textContent = 'Skriv inn en tittel først.';
         msg.style.color = '#fca5a5';
@@ -1036,54 +1098,17 @@
       msg.textContent = 'Søker ...';
       msg.style.color = '#93c5fd';
       try {
-        const results = await searchOmdb(title, type);
-        if (results.length === 1) {
-          const data = await getOmdbById(results[0].imdbID);
-          fillOmdbFields(data);
-          msg.textContent = `Fant treff: ${data.Title} (${data.Year || 'ukjent år'})`;
-          msg.style.color = '#86efac';
-          return;
-        }
-        msg.textContent = `Fant flere treff på "${title}". Velg riktig film/serie under.`;
-        msg.style.color = '#fbbf24';
-        if (choices) {
-          choices.innerHTML = results.slice(0, 8).map(item => `
-            <div class="search-choice">
-              <div>
-                <div><strong>${escapeHtml(item.Title || '')}</strong></div>
-                <div class="small muted">${escapeHtml(item.Year || 'Ukjent år')} · ${item.Type === 'series' ? 'Serie' : 'Film'}</div>
-              </div>
-              <button type="button" class="btn-secondary" onclick="selectOmdbResult('${item.imdbID}')">Velg</button>
-            </div>
-          `).join('');
-          choices.classList.remove('hidden');
-        }
-      } catch (err) {
-        msg.textContent = err.message;
-        msg.style.color = '#fca5a5';
-      }
-    };
-
-    window.selectOmdbResult = async (imdbID) => {
-      const msg = document.getElementById('requestMsg');
-      const choices = document.getElementById('searchChoices');
-      msg.textContent = 'Henter valgt tittel ...';
-      msg.style.color = '#93c5fd';
-      try {
-        const data = await getOmdbById(imdbID);
-        fillOmdbFields(data);
-        if (choices) {
-          choices.innerHTML = '';
-          choices.classList.add('hidden');
-        }
-        msg.textContent = `Valgt: ${data.Title} (${data.Year || 'ukjent år'})`;
+        const data = await checkOmdb(title, type);
+        document.getElementById('year').value = data.Year || '';
+        document.getElementById('imdbID').value = data.imdbID || '';
+        document.getElementById('poster').value = data.Poster && data.Poster !== 'N/A' ? data.Poster : '';
+        msg.textContent = `Fant treff: ${data.Title} (${data.Year || 'ukjent år'})`;
         msg.style.color = '#86efac';
       } catch (err) {
         msg.textContent = err.message;
         msg.style.color = '#fca5a5';
       }
     };
-
     window.testFirebaseDbConnection = async () => {
       const status = getFirebaseStatus();
       alert('Status akkurat nå: ' + status.text);
@@ -1092,7 +1117,6 @@
 
     async function render() {
       await seedIfEmpty();
-      await migrateUsersToPasswordHash();
       const session = getSession();
       if (!session) return renderLogin();
       return await renderApp();
