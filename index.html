@@ -239,10 +239,16 @@
     }
     .picker-option .poster { width: 72px; height: 108px; }
     .picker-actions { display:flex; justify-content:flex-end; margin-top:14px; }
-    .plex-box { margin-top: 12px; padding: 12px 14px; border-radius: 14px; border:1px solid rgba(148,163,184,.18); background: rgba(15,23,42,.55); }
-    .plex-box.ok { background: rgba(22,163,74,.14); border-color: rgba(74,222,128,.24); }
-    .plex-box.warn { background: rgba(245,158,11,.14); border-color: rgba(251,191,36,.2); }
-    .plex-box.error { background: rgba(220,38,38,.14); border-color: rgba(248,113,113,.22); }
+    .plex-box { margin-top: 12px; padding: 14px 16px; border-radius: 16px; border:1px solid rgba(148,163,184,.18); background: rgba(15,23,42,.55); }
+    .plex-box.ok { background: linear-gradient(135deg, rgba(22,163,74,.22), rgba(22,163,74,.10)); border-color: rgba(74,222,128,.34); box-shadow: 0 0 0 1px rgba(74,222,128,.08) inset; }
+    .plex-box.warn { background: linear-gradient(135deg, rgba(245,158,11,.22), rgba(245,158,11,.10)); border-color: rgba(251,191,36,.24); }
+    .plex-box.error { background: linear-gradient(135deg, rgba(220,38,38,.22), rgba(220,38,38,.10)); border-color: rgba(248,113,113,.24); }
+    .plex-title { display:flex; align-items:center; gap:10px; font-weight:800; font-size:1.02rem; }
+    .plex-icon { width:28px; height:28px; border-radius:999px; display:grid; place-items:center; font-weight:900; }
+    .plex-box.ok .plex-icon { background:#16a34a; color:#fff; }
+    .plex-box.warn .plex-icon { background:#f59e0b; color:#111827; }
+    .plex-box.error .plex-icon { background:#dc2626; color:#fff; }
+    .button-lock { margin-top:10px; display:inline-flex; align-items:center; gap:8px; background: rgba(220,38,38,.14); color:#fecaca; border:1px solid rgba(248,113,113,.24); border-radius:999px; padding:8px 12px; font-size:.9rem; font-weight:700; }
     .right { text-align:right; }
     @media (max-width: 980px) {
       .col-8, .col-6, .col-4, .col-3 { grid-column: span 12; }
@@ -484,6 +490,9 @@
       filterStatus: 'all',
       filterSort: 'newest'
     };
+    let appState = {
+      plexExisting: null
+    };
 
     async function login(username, password) {
       const user = getUsers().find(u => u.username === username && u.password === password);
@@ -592,19 +601,39 @@
             year: item.year || '',
             type: item.type || '',
             library: hub.title || '',
-            ratingKey: item.ratingKey || '',
-            thumb: item.thumb || ''
+            ratingKey: item.ratingKey || ''
           });
         }
       }
       return { configured: true, matches };
     }
+    function updateRequestSubmitState() {
+      const form = document.getElementById('requestForm');
+      if (!form) return;
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (!submitBtn) return;
+      document.getElementById('plexBlockingNotice')?.remove();
+      if (appState.plexExisting && appState.plexExisting.exists) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Kan ikke legges til – finnes i Plex';
+        const note = document.createElement('div');
+        note.id = 'plexBlockingNotice';
+        note.className = 'button-lock';
+        note.textContent = 'Denne tittelen finnes allerede i Plex og kan derfor ikke legges til som nytt ønske.';
+        form.appendChild(note);
+      } else {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Lagre ønske';
+      }
+    }
     function renderPlexStatus(result, selectedTitle='') {
       const box = document.getElementById('plexStatus');
       if (!box) return;
       if (!result || result.configured === false) {
+        appState.plexExisting = null;
         box.className = 'plex-box warn';
-        box.innerHTML = '<strong>Plex ikke konfigurert</strong><div class="small muted" style="margin-top:6px;">Legg inn Plex URL og token under Innstillinger for å sjekke om filmen allerede finnes.</div>';
+        box.innerHTML = '<div class="plex-title"><span class="plex-icon">!</span><span>Plex ikke konfigurert</span></div><div class="small muted" style="margin-top:8px;">Legg inn Plex URL og token under Innstillinger for å sjekke biblioteket ditt.</div>';
+        updateRequestSubmitState();
         return;
       }
       const uniqueMatches = [];
@@ -615,15 +644,19 @@
         seen.add(key);
         uniqueMatches.push(item);
       }
-      const filtered = uniqueMatches.filter(item => normalizeText(item.title).includes(normalizeText(selectedTitle)));
+      const filtered = uniqueMatches.filter(item => normalizeText(item.title).includes(normalizeText(selectedTitle)) || normalizeText(selectedTitle).includes(normalizeText(item.title)));
       const list = (filtered.length ? filtered : uniqueMatches).slice(0, 6);
       if (!list.length) {
-        box.className = 'plex-box';
-        box.innerHTML = '<strong>Ikke funnet i Plex</strong><div class="small muted" style="margin-top:6px;">Ingen tydelige treff i Plex på denne tittelen.</div>';
+        appState.plexExisting = { exists: false, matches: [] };
+        box.className = 'plex-box warn';
+        box.innerHTML = '<div class="plex-title"><span class="plex-icon">?</span><span>Ikke funnet i Plex</span></div><div class="small muted" style="margin-top:8px;">Ingen tydelige treff i Plex på denne tittelen. Du kan legge inn ønsket.</div>';
+        updateRequestSubmitState();
         return;
       }
+      appState.plexExisting = { exists: true, matches: list };
       box.className = 'plex-box ok';
-      box.innerHTML = `<strong>Finnes i Plex</strong><div class="small muted" style="margin-top:6px;">Vi fant ${list.length} treff.</div><div style="margin-top:8px; display:grid; gap:8px;">${list.map(item => `<div><strong>${escapeHtml(item.title || 'Ukjent tittel')}</strong> <span class="muted small">${escapeHtml(String(item.year || ''))}${item.library ? ' · ' + escapeHtml(item.library) : ''}</span></div>`).join('')}</div>`;
+      box.innerHTML = `<div class="plex-title"><span class="plex-icon">✓</span><span>Filmen finnes allerede i Plex</span></div><div class="small muted" style="margin-top:8px;">Ønsket er låst for lagring fordi vi fant ${list.length} treff i Plex.</div><div style="margin-top:10px; display:grid; gap:8px;">${list.map(item => `<div><strong>${escapeHtml(item.title || 'Ukjent tittel')}</strong> <span class="muted small">${escapeHtml(String(item.year || ''))}${item.library ? ' · ' + escapeHtml(item.library) : ''}</span></div>`).join('')}</div>`;
+      updateRequestSubmitState();
     }
 
     function findDuplicateRequest(requests, payload) {
@@ -1031,7 +1064,7 @@
                   <button type="submit">Lagre ønske</button>
                 </form>
                 <div id="requestMsg" class="footer-note"></div>
-                <div id="plexStatus" class="plex-box warn"><strong>Plex ikke konfigurert</strong><div class="small muted" style="margin-top:6px;">Legg inn Plex URL og token under Innstillinger for å sjekke biblioteket ditt.</div></div>
+                <div id="plexStatus" class="plex-box warn"><div class="plex-title"><span class="plex-icon">!</span><span>Plex ikke konfigurert</span></div><div class="small muted" style="margin-top:8px;">Legg inn Plex URL og token under Innstillinger for å sjekke biblioteket ditt.</div></div>
               </div>
               <div class="col-4 card">
                 <h2>Tips</h2>
@@ -1159,6 +1192,13 @@
             note: document.getElementById('note').value.trim()
           };
           if (!payload.title) return;
+          if (appState.plexExisting && appState.plexExisting.exists) {
+            const msg = document.getElementById('requestMsg');
+            msg.textContent = 'Denne tittelen finnes allerede i Plex og kan ikke legges til som nytt ønske.';
+            msg.style.color = '#fca5a5';
+            updateRequestSubmitState();
+            return;
+          }
           const result = await createRequest(payload);
           const msg = document.getElementById('requestMsg');
           if (result.mode === 'created') {
@@ -1172,11 +1212,15 @@
             msg.style.color = '#fcd34d';
           }
           requestForm.reset();
+          appState.plexExisting = null;
           await render();
           setTimeout(async () => { state.view = 'requests'; await render(); }, 450);
         });
       }
 
+      if (requestForm) {
+        updateRequestSubmitState();
+      }
       const userForm = document.getElementById('userForm');
       if (userForm) {
         userForm.addEventListener('submit', (e) => {
@@ -1279,6 +1323,8 @@
           msg.style.color = '#93c5fd';
           const chosenImdbId = await openOmdbPicker(results.slice(0, 12));
           if (!chosenImdbId) {
+            appState.plexExisting = null;
+            updateRequestSubmitState();
             msg.textContent = 'Valg avbrutt.';
             msg.style.color = '#fcd34d';
             return;
@@ -1298,13 +1344,17 @@
           const plexResult = await checkPlexLibrary(data.Title || title);
           renderPlexStatus(plexResult, data.Title || title);
         } catch (plexErr) {
+          appState.plexExisting = null;
+          updateRequestSubmitState();
           const box = document.getElementById('plexStatus');
           if (box) {
             box.className = 'plex-box error';
-            box.innerHTML = `<strong>Plex-sjekk feilet</strong><div class="small muted" style="margin-top:6px;">${escapeHtml(plexErr.message || 'Kunne ikke kontakte Plex.')}</div>`;
+            box.innerHTML = `<div class="plex-title"><span class="plex-icon">!</span><span>Plex-sjekk feilet</span></div><div class="small muted" style="margin-top:8px;">${escapeHtml(plexErr.message || 'Kunne ikke kontakte Plex.')}</div>`;
           }
         }
       } catch (err) {
+        appState.plexExisting = null;
+        updateRequestSubmitState();
         msg.textContent = err.message;
         msg.style.color = '#fca5a5';
       }
