@@ -264,15 +264,15 @@
     };
 
     const seedIfEmpty = async () => {
-      if (!localStorage.getItem(STORAGE.users)) {
-        const users = [
-          { id: crypto.randomUUID(), username: 'admin', password: 'admin123', role: 'admin', displayName: 'Administrator', createdAt: new Date().toISOString() },
-          { id: crypto.randomUUID(), username: 'bruker1', password: 'bruker123', role: 'user', displayName: 'Bruker 1', createdAt: new Date().toISOString() }
-        ];
-        localStorage.setItem(STORAGE.users, JSON.stringify(users));
-      }
+      const defaultUsers = [
+        { id: crypto.randomUUID(), username: 'admin', password: 'admin123', role: 'admin', displayName: 'Administrator', createdAt: new Date().toISOString() },
+        { id: crypto.randomUUID(), username: 'bruker1', password: 'bruker123', role: 'user', displayName: 'Bruker 1', createdAt: new Date().toISOString() }
+      ];
 
       if (!window.firebaseDb) {
+        if (!localStorage.getItem(STORAGE.users)) {
+          localStorage.setItem(STORAGE.users, JSON.stringify(defaultUsers));
+        }
         if (!localStorage.getItem(STORAGE.requests)) {
           localStorage.setItem(STORAGE.requests, JSON.stringify([
             {
@@ -302,6 +302,21 @@
       }
 
       try {
+        const usersSnap = await window.firebaseDb.ref('users').once('value');
+        if (!usersSnap.exists()) {
+          const mappedUsers = {};
+          defaultUsers.forEach((user) => {
+            const { id, ...rest } = user;
+            mappedUsers[id] = rest;
+          });
+          await window.firebaseDb.ref('users').set(mappedUsers);
+          localStorage.setItem(STORAGE.users, JSON.stringify(defaultUsers));
+        } else {
+          const usersData = usersSnap.val() || {};
+          const users = Object.entries(usersData).map(([id, value]) => ({ id, ...value }));
+          localStorage.setItem(STORAGE.users, JSON.stringify(users));
+        }
+
         const requestsSnap = await window.firebaseDb.ref('requests').once('value');
         if (!requestsSnap.exists()) {
           const newRef = window.firebaseDb.ref('requests').push();
@@ -323,6 +338,7 @@
             voterNames: ['Bruker 1']
           });
         }
+
         const settingsSnap = await window.firebaseDb.ref('settings').once('value');
         if (!settingsSnap.exists()) {
           await window.firebaseDb.ref('settings').set({ omdbApiKey: '', adminEmail: '' });
@@ -332,8 +348,28 @@
       }
     };
 
-    const getUsers = () => JSON.parse(localStorage.getItem(STORAGE.users) || '[]');
-    const saveUsers = (users) => localStorage.setItem(STORAGE.users, JSON.stringify(users));
+    async function getUsers() {
+      if (!window.firebaseDb) {
+        return JSON.parse(localStorage.getItem(STORAGE.users) || '[]');
+      }
+      const snapshot = await window.firebaseDb.ref('users').once('value');
+      const data = snapshot.val() || {};
+      const users = Object.entries(data).map(([id, value]) => ({ id, ...value }));
+      localStorage.setItem(STORAGE.users, JSON.stringify(users));
+      return users;
+    }
+    async function saveUsers(users) {
+      localStorage.setItem(STORAGE.users, JSON.stringify(users));
+      if (!window.firebaseDb) return;
+      const mapped = {};
+      for (const user of users) {
+        const copy = { ...user };
+        const id = copy.id || crypto.randomUUID();
+        delete copy.id;
+        mapped[id] = copy;
+      }
+      await window.firebaseDb.ref('users').set(mapped);
+    }
     const getSession = () => JSON.parse(localStorage.getItem(STORAGE.session) || 'null');
     const saveSession = (session) => localStorage.setItem(STORAGE.session, JSON.stringify(session));
     const escapeHtml = (s='') => String(s)
@@ -438,7 +474,8 @@
     };
 
     async function login(username, password) {
-      const user = getUsers().find(u => u.username === username && u.password === password);
+      const users = await getUsers();
+      const user = users.find(u => u.username === username && u.password === password);
       if (!user) return false;
       saveSession({ id: user.id, username: user.username, role: user.role, displayName: user.displayName });
       return true;
@@ -449,29 +486,13 @@
       render();
     }
 
-    function createUser({ username, password, displayName, role }) {
-      const users = getUsers();
+    async function createUser({ username, password, displayName, role }) {
+      const users = await getUsers();
       if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
         throw new Error('Brukernavnet finnes allerede.');
       }
       users.push({ id: crypto.randomUUID(), username, password, displayName, role, createdAt: new Date().toISOString() });
-      saveUsers(users);
-    }
-
-    function changeOwnPassword(newPassword, confirmPassword) {
-      const session = getSession();
-      if (!session) throw new Error('Du må være logget inn.');
-      const users = getUsers();
-      const index = users.findIndex(u => u.id === session.id);
-      if (index === -1) throw new Error('Fant ikke bruker.');
-      if (!newPassword || newPassword.length < 4) {
-        throw new Error('Nytt passord må være minst 4 tegn.');
-      }
-      if (newPassword !== confirmPassword) {
-        throw new Error('Nytt passord og bekreft passord må være like.');
-      }
-      users[index].password = newPassword;
-      saveUsers(users);
+      await saveUsers(users);
     }
 
     async function checkOmdb(title, type) {
@@ -564,14 +585,14 @@
       await updateRequest(id, { voters, voterNames });
     }
 
-    function deleteUser(id) {
+    async function deleteUser(id) {
       const session = getSession();
-      const users = getUsers();
+      const users = await getUsers();
       const user = users.find(u => u.id === id);
       if (!user) return;
       if (user.username === 'admin') throw new Error('Standard admin kan ikke slettes i denne demoen.');
       if (session?.id === id) throw new Error('Du kan ikke slette brukeren du er logget inn som.');
-      saveUsers(users.filter(u => u.id !== id));
+      await saveUsers(users.filter(u => u.id !== id));
     }
 
     async function markAdminSeenAll() {
@@ -715,7 +736,7 @@
     async function renderApp() {
       const session = getSession();
       const isAdmin = session.role === 'admin';
-      const users = getUsers();
+      const users = await getUsers();
       const requests = (await getRequests()).map(ensureRequestShape);
       const settings = await getSettings();
       const firebaseStatus = getFirebaseStatus();
@@ -745,7 +766,6 @@
               <button class="${state.view === 'requests' ? 'active' : ''}" onclick="setView('requests')">Ønskeliste</button>
               <button class="${state.view === 'mine' ? 'active' : ''}" onclick="setView('mine')">Mine ønsker</button>
               <button class="${state.view === 'newRequest' ? 'active' : ''}" onclick="setView('newRequest')">Nytt ønske</button>
-              <button class="${state.view === 'password' ? 'active' : ''}" onclick="setView('password')">Bytt passord</button>
               ${isAdmin ? `<button class="${state.view === 'admin' ? 'active' : ''}" onclick="setView('admin')">Admin</button>` : ''}
               <button class="${state.view === 'settings' ? 'active' : ''}" onclick="setView('settings')">Innstillinger</button>
             </nav>
@@ -955,38 +975,6 @@
             </div>
           </div>
 
-
-          <div ${state.view !== 'password' ? 'class="hidden"' : ''}>
-            <div class="grid">
-              <div class="col-6 card">
-                <h2>Bytt passord</h2>
-                <form id="changePasswordForm">
-                  <div>
-                    <label for="newPassword">Nytt passord</label>
-                    <input id="newPassword" type="password" required autocomplete="new-password" />
-                  </div>
-                  <div>
-                    <label for="confirmPassword">Bekreft nytt passord</label>
-                    <input id="confirmPassword" type="password" required autocomplete="new-password" />
-                  </div>
-                  <button type="submit">Lagre nytt passord</button>
-                </form>
-                <div id="changePasswordMsg" class="footer-note"></div>
-              </div>
-              <div class="col-6 card">
-                <h2>Tips</h2>
-                <div class="notice info">
-                  Passordet endres kun for brukeren som er logget inn akkurat nå.
-                </div>
-                <ul class="small muted">
-                  <li>Du trenger ikke å skrive inn gammelt passord for å endre passordet.</li>
-                  <li>Nytt passord må være minst 4 tegn.</li>
-                  <li>Etter lagring kan du logge inn med det nye passordet med en gang.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
           <div ${state.view !== 'settings' ? 'class="hidden"' : ''}>
             <div class="grid">
               <div class="col-6 card">
@@ -1057,10 +1045,10 @@
 
       const userForm = document.getElementById('userForm');
       if (userForm) {
-        userForm.addEventListener('submit', (e) => {
+        userForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           try {
-            createUser({
+            await createUser({
               displayName: document.getElementById('displayName').value.trim(),
               username: document.getElementById('username').value.trim(),
               password: document.getElementById('password').value,
@@ -1069,7 +1057,7 @@
             document.getElementById('userMsg').textContent = 'Bruker opprettet.';
             document.getElementById('userMsg').style.color = '#86efac';
             userForm.reset();
-            render();
+            await render();
           } catch (err) {
             document.getElementById('userMsg').textContent = err.message;
             document.getElementById('userMsg').style.color = '#fca5a5';
@@ -1077,25 +1065,6 @@
         });
       }
 
-      const changePasswordForm = document.getElementById('changePasswordForm');
-      if (changePasswordForm) {
-        changePasswordForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const msg = document.getElementById('changePasswordMsg');
-          try {
-            changeOwnPassword(
-              document.getElementById('newPassword').value,
-              document.getElementById('confirmPassword').value
-            );
-            msg.textContent = 'Passordet er endret.';
-            msg.style.color = '#86efac';
-            changePasswordForm.reset();
-          } catch (err) {
-            msg.textContent = err.message || 'Kunne ikke endre passord.';
-            msg.style.color = '#fca5a5';
-          }
-        });
-      }
       const settingsForm = document.getElementById('settingsForm');
       if (settingsForm) {
         settingsForm.addEventListener('submit', async (e) => {
@@ -1124,9 +1093,14 @@
     };
     window.markSeen = async (id) => { await updateRequest(id, { adminSeen: true }); await render(); };
     window.markAllSeen = async () => { await markAdminSeenAll(); await render(); };
-    window.removeUser = (id) => {
+    window.removeUser = async (id) => {
       if (!confirm('Slette bruker?')) return;
-      try { deleteUser(id); render(); } catch (err) { alert(err.message); }
+      try {
+        await deleteUser(id);
+        await render();
+      } catch (err) {
+        alert(err.message);
+      }
     };
     window.removeRequest = async (id) => {
       if (!confirm('Slette dette ønsket?')) return;
