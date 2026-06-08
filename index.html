@@ -458,6 +458,22 @@
       saveUsers(users);
     }
 
+    function changeOwnPassword(newPassword, confirmPassword) {
+      const session = getSession();
+      if (!session) throw new Error('Du må være logget inn.');
+      const users = getUsers();
+      const index = users.findIndex(u => u.id === session.id);
+      if (index === -1) throw new Error('Fant ikke bruker.');
+      if (!newPassword || newPassword.length < 4) {
+        throw new Error('Nytt passord må være minst 4 tegn.');
+      }
+      if (newPassword !== confirmPassword) {
+        throw new Error('Nytt passord og bekreft passord må være like.');
+      }
+      users[index].password = newPassword;
+      saveUsers(users);
+    }
+
     async function checkOmdb(title, type) {
       const { omdbApiKey } = await getSettings();
       if (!omdbApiKey) throw new Error('Legg inn OMDb API-nøkkel under Innstillinger først.');
@@ -729,6 +745,7 @@
               <button class="${state.view === 'requests' ? 'active' : ''}" onclick="setView('requests')">Ønskeliste</button>
               <button class="${state.view === 'mine' ? 'active' : ''}" onclick="setView('mine')">Mine ønsker</button>
               <button class="${state.view === 'newRequest' ? 'active' : ''}" onclick="setView('newRequest')">Nytt ønske</button>
+              <button class="${state.view === 'password' ? 'active' : ''}" onclick="setView('password')">Bytt passord</button>
               ${isAdmin ? `<button class="${state.view === 'admin' ? 'active' : ''}" onclick="setView('admin')">Admin</button>` : ''}
               <button class="${state.view === 'settings' ? 'active' : ''}" onclick="setView('settings')">Innstillinger</button>
             </nav>
@@ -938,6 +955,38 @@
             </div>
           </div>
 
+
+          <div ${state.view !== 'password' ? 'class="hidden"' : ''}>
+            <div class="grid">
+              <div class="col-6 card">
+                <h2>Bytt passord</h2>
+                <form id="changePasswordForm">
+                  <div>
+                    <label for="newPassword">Nytt passord</label>
+                    <input id="newPassword" type="password" required autocomplete="new-password" />
+                  </div>
+                  <div>
+                    <label for="confirmPassword">Bekreft nytt passord</label>
+                    <input id="confirmPassword" type="password" required autocomplete="new-password" />
+                  </div>
+                  <button type="submit">Lagre nytt passord</button>
+                </form>
+                <div id="changePasswordMsg" class="footer-note"></div>
+              </div>
+              <div class="col-6 card">
+                <h2>Tips</h2>
+                <div class="notice info">
+                  Passordet endres kun for brukeren som er logget inn akkurat nå.
+                </div>
+                <ul class="small muted">
+                  <li>Du trenger ikke å skrive inn gammelt passord for å endre passordet.</li>
+                  <li>Nytt passord må være minst 4 tegn.</li>
+                  <li>Etter lagring kan du logge inn med det nye passordet med en gang.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           <div ${state.view !== 'settings' ? 'class="hidden"' : ''}>
             <div class="grid">
               <div class="col-6 card">
@@ -1028,6 +1077,25 @@
         });
       }
 
+      const changePasswordForm = document.getElementById('changePasswordForm');
+      if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const msg = document.getElementById('changePasswordMsg');
+          try {
+            changeOwnPassword(
+              document.getElementById('newPassword').value,
+              document.getElementById('confirmPassword').value
+            );
+            msg.textContent = 'Passordet er endret.';
+            msg.style.color = '#86efac';
+            changePasswordForm.reset();
+          } catch (err) {
+            msg.textContent = err.message || 'Kunne ikke endre passord.';
+            msg.style.color = '#fca5a5';
+          }
+        });
+      }
       const settingsForm = document.getElementById('settingsForm');
       if (settingsForm) {
         settingsForm.addEventListener('submit', async (e) => {
